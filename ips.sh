@@ -40,6 +40,7 @@ fi
 export ROS_DISCOVERY_SERVER="${ROS_DISCOVERY_SERVER:-$DISCOVERY_DEVICE:$DISCOVERY_PORT}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
 export RMW_IMPLEMENTATION="${IPS_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+export ROS_SUPER_CLIENT="${ROS_SUPER_CLIENT:-TRUE}"
 export ROS_LOCALHOST_ONLY=0
 export SESSION_ID="${SESSION_ID:-4242}"
 export DURATION="${DURATION:-30}"
@@ -56,32 +57,36 @@ if [[ -n "$LOCAL_TAILSCALE_IP" && "$RMW_IMPLEMENTATION" == "rmw_fastrtps_cpp" ]]
   _fastdds_profile="${FASTDDS_TAILSCALE_PROFILE:-$_ips_dir/.fastdds_tailscale.xml}"
   cat >"$_fastdds_profile" <<EOF
 <?xml version="1.0" encoding="UTF-8" ?>
-<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
-  <transport_descriptors>
-    <transport_descriptor>
-      <transport_id>tailscale_udp</transport_id>
-      <type>UDPv4</type>
-      <interfaceWhiteList>
-        <address>$LOCAL_TAILSCALE_IP</address>
-      </interfaceWhiteList>
-    </transport_descriptor>
-  </transport_descriptors>
-  <participant profile_name="tailscale_participant" is_default_profile="true">
-    <rtps>
-      <userTransports>
+<dds>
+  <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <transport_descriptors>
+      <transport_descriptor>
         <transport_id>tailscale_udp</transport_id>
-      </userTransports>
-      <useBuiltinTransports>false</useBuiltinTransports>
-    </rtps>
-  </participant>
-</profiles>
+        <type>UDPv4</type>
+        <interfaceWhiteList>
+          <address>$LOCAL_TAILSCALE_IP</address>
+        </interfaceWhiteList>
+      </transport_descriptor>
+    </transport_descriptors>
+    <participant profile_name="tailscale_participant" is_default_profile="true">
+      <rtps>
+        <userTransports>
+          <transport_id>tailscale_udp</transport_id>
+        </userTransports>
+        <useBuiltinTransports>false</useBuiltinTransports>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>
 EOF
   export FASTRTPS_DEFAULT_PROFILES_FILE="$_fastdds_profile"
   export FASTDDS_DEFAULT_PROFILES_FILE="$_fastdds_profile"
 fi
 
 netbench_discovery() {
-  LISTEN_ADDRESS="${LOCAL_TAILSCALE_IP:-0.0.0.0}" PORT="$DISCOVERY_PORT" "$_ips_dir/scripts/start_humble_discovery_server.sh"
+  env -u ROS_DISCOVERY_SERVER -u DISCOVERY_SERVER \
+    LISTEN_ADDRESS="${LOCAL_TAILSCALE_IP:-0.0.0.0}" PORT="$DISCOVERY_PORT" \
+    "$_ips_dir/scripts/start_humble_discovery_server.sh"
 }
 
 netbench_run() {
@@ -93,6 +98,7 @@ netbench_env() {
     "local=${LOCAL_TAILSCALE_IP:-unknown}" \
     "role=$ROLE" \
     "rmw=$RMW_IMPLEMENTATION" \
+    "super_client=$ROS_SUPER_CLIENT" \
     "discovery=$ROS_DISCOVERY_SERVER" \
     "domain=$ROS_DOMAIN_ID" \
     "session=$SESSION_ID" \

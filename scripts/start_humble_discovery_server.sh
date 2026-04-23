@@ -21,5 +21,7 @@ set +u
 source "${ROS_SETUP}"
 set -u
 
+unset ROS_DISCOVERY_SERVER DISCOVERY_SERVER
+
 echo "[ros2_netbench] Fast DDS discovery server listening on ${LISTEN_ADDRESS}:${PORT} with id ${SERVER_ID}" >&2
 exec fastdds discovery -i "${SERVER_ID}" -l "${LISTEN_ADDRESS}" -p "${PORT}"
