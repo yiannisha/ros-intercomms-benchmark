@@ -1,6 +1,6 @@
 # ros2_netbench
 
-`ros2_netbench` is a Python ROS 2 benchmarking toolkit for measuring application-level communication quality between two machines. It is Linux-first, uses `rclpy`, targets ROS 2 Jazzy or newer, and writes machine-readable artifacts for repeatable experiments.
+`ros2_netbench` is a Python ROS 2 benchmarking toolkit for measuring application-level communication quality between two machines. It is Linux-first, uses `rclpy`, supports ROS 2 Humble and Jazzy or newer, and writes machine-readable artifacts for repeatable experiments.
 
 The repo contains two ROS 2 packages:
 
@@ -21,10 +21,10 @@ It does not measure raw IP packet loss directly. Application-level message loss 
 
 ## Build
 
-Install ROS 2 Jazzy or newer, source your ROS environment, then build the workspace from the repo root:
+Install ROS 2 Humble, Jazzy, or newer, source your ROS environment, then build the workspace from the repo root:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 colcon build --symlink-install
 source install/setup.bash
 ```
@@ -33,19 +33,32 @@ No non-ROS Python runtime dependencies are required for the benchmark logic.
 
 ### Docker Development Environment
 
-On machines without a native ROS 2 Jazzy install, use the repo-local Docker environment:
+On machines without a native ROS 2 install, use the repo-local Docker environment:
 
 ```bash
 scripts/dev_shell.sh
 ```
 
-The script builds the `ros2-netbench:jazzy` image, mounts the repo at `/workspace`, sources ROS 2 Jazzy, runs `colcon build --symlink-install` if the workspace has not been built yet, sources `install/setup.bash`, and opens a shell ready for `ros2 run ...` commands.
+The script builds the `ros2-netbench:humble` image by default, mounts the repo at `/workspace`, sources ROS 2, runs `colcon build --symlink-install` if the workspace has not been built yet, sources `install/setup.bash`, and opens a shell ready for `ros2 run ...` commands.
+
+Use another supported distro by setting `ROS_DISTRO`:
+
+```bash
+ROS_DISTRO=jazzy scripts/dev_shell.sh
+```
+
+Run the repeatable Docker build and test path:
+
+```bash
+ROS_DISTRO=humble scripts/test_ros_distro.sh
+ROS_DISTRO=jazzy scripts/test_ros_distro.sh
+```
 
 From inside that shell, verify the environment with:
 
 ```bash
-pytest tests/unit
-pytest tests/integration
+python3 -m pytest tests/unit
+python3 -m pytest tests/integration
 ```
 
 Docker Desktop is useful for local development and loopback testing. For real LAN or cross-network benchmarking, a native Linux ROS 2 environment is still recommended because DDS multicast, host networking, and NIC-level impairment tools behave differently inside Docker Desktop.
@@ -141,7 +154,7 @@ ros2 run ros2_netbench run_benchmark \
 On both machines, use the same ROS domain ID and source the workspace:
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/humble/setup.bash
 source install/setup.bash
 export ROS_DOMAIN_ID=42
 ```
@@ -407,14 +420,14 @@ If nodes do not connect:
 Run pure unit tests:
 
 ```bash
-pytest tests/unit
+python3 -m pytest tests/unit
 ```
 
 Run the loopback integration test from a sourced ROS 2 workspace:
 
 ```bash
 source install/setup.bash
-pytest tests/integration
+python3 -m pytest tests/integration
 ```
 
 The integration test skips automatically if `rclpy` or the generated interface package is unavailable.
