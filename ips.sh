@@ -39,13 +39,19 @@ fi
 
 export ROS_DISCOVERY_SERVER="${ROS_DISCOVERY_SERVER:-$DISCOVERY_DEVICE:$DISCOVERY_PORT}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
+export RMW_IMPLEMENTATION="${IPS_RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+export ROS_LOCALHOST_ONLY=0
 export SESSION_ID="${SESSION_ID:-4242}"
 export DURATION="${DURATION:-30}"
 export WARMUP="${WARMUP:-3}"
 export RATE_HZ="${RATE_HZ:-100}"
 export PAYLOAD_SIZE="${PAYLOAD_SIZE:-1024}"
 
-if [[ -n "$LOCAL_TAILSCALE_IP" ]]; then
+if [[ "$RMW_IMPLEMENTATION" == "rmw_fastrtps_cpp" ]]; then
+  unset CYCLONEDDS_URI
+fi
+
+if [[ -n "$LOCAL_TAILSCALE_IP" && "$RMW_IMPLEMENTATION" == "rmw_fastrtps_cpp" ]]; then
   _fastdds_profile="${FASTDDS_TAILSCALE_PROFILE:-$_ips_dir/.fastdds_tailscale.xml}"
   cat >"$_fastdds_profile" <<EOF
 <?xml version="1.0" encoding="UTF-8" ?>
@@ -73,4 +79,4 @@ EOF
   export FASTDDS_DEFAULT_PROFILES_FILE="$_fastdds_profile"
 fi
 
-echo "ips.sh: local=${LOCAL_TAILSCALE_IP:-unknown} role=$ROLE discovery=$ROS_DISCOVERY_SERVER profile=${FASTRTPS_DEFAULT_PROFILES_FILE:-none}" >&2
+echo "ips.sh: local=${LOCAL_TAILSCALE_IP:-unknown} role=$ROLE rmw=$RMW_IMPLEMENTATION discovery=$ROS_DISCOVERY_SERVER profile=${FASTRTPS_DEFAULT_PROFILES_FILE:-none}" >&2

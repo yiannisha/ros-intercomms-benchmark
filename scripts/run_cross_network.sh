@@ -9,6 +9,15 @@ fi
 
 source "${SCRIPT_DIR}/_humble_env.sh"
 
+if [[ -n "${ROS_DISCOVERY_SERVER:-}" && "${RMW_IMPLEMENTATION:-}" != "rmw_fastrtps_cpp" ]]; then
+  cat >&2 <<EOF
+[ros2_netbench] warning: ROS_DISCOVERY_SERVER is configured, but
+RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset}. The Fast DDS discovery server
+path requires RMW_IMPLEMENTATION=rmw_fastrtps_cpp; Cyclone DDS will ignore
+ROS_DISCOVERY_SERVER and needs CYCLONEDDS_URI/static peers instead.
+EOF
+fi
+
 MODE="${MODE:-stream}"
 ROLE="${ROLE:-receiver}"
 OUTPUT_DIR="${OUTPUT_DIR:-results}"
