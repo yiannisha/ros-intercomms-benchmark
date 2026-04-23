@@ -168,6 +168,59 @@ ros2 launch ros2_netbench same_lan_stream.launch.py role:=receiver duration:=30 
 ros2 launch ros2_netbench same_lan_stream.launch.py role:=sender duration:=30 rate_hz:=100
 ```
 
+## Cross-Network Real
+
+1. Build On Both Devices
+```bash
+cd /home/eden/ros-intercomms-benchmark
+scripts/setup_humble_workspace.sh
+```
+
+2. Start Discovery Server
+Run this on one device that both devices can reach. Replace <server-bind-ip> with that device’s reachable interface IP, or use
+`0.0.0.0.`
+
+```bash
+cd /home/eden/ros-intercomms-benchmark
+LISTEN_ADDRESS=0.0.0.0 PORT=11811 scripts/start_humble_discovery_server.sh
+```
+
+Keep this terminal open.
+
+3. Start Receiver
+Run this on the receiving device first. Replace <server-ip> with the IP of the device running the discovery server.
+
+```bash
+cd /home/eden/ros-intercomms-benchmark
+ROS_DOMAIN_ID=42 \
+ROS_DISCOVERY_SERVER=<server-ip>:11811 \
+SESSION_ID=4242 \
+ROLE=receiver \
+OUTPUT_DIR=results/cross_rx \
+DURATION=30 \
+WARMUP=3 \
+RATE_HZ=100 \
+PAYLOAD_SIZE=1024 \
+scripts/run_cross_network.sh
+```
+
+4. Start Sender
+Run this on the sending device second.
+
+```bash
+cd /home/eden/ros-intercomms-benchmark
+ROS_DOMAIN_ID=42 \
+ROS_DISCOVERY_SERVER=<server-ip>:11811 \
+SESSION_ID=4242 \
+ROLE=sender \
+OUTPUT_DIR=results/cross_tx \
+DURATION=30 \
+WARMUP=3 \
+RATE_HZ=100 \
+PAYLOAD_SIZE=1024 \
+scripts/run_cross_network.sh
+```
+
 ## Cross-Network Quick Start
 
 Across routed networks, VPNs, or Tailscale-style overlays, do not assume multicast discovery works. The benchmark code does not hardcode a VPN provider; it only requires IP reachability and a DDS discovery setup that can find peers.
