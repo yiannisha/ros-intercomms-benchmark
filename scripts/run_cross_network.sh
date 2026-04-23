@@ -59,5 +59,10 @@ if [[ -n "${SESSION_ID:-}" ]]; then
   ARGS+=(--session-id "${SESSION_ID}")
 fi
 
-echo "[ros2_netbench] cross-network ${MODE}/${ROLE}: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION} discovery=${ROS_DISCOVERY_SERVER:-not-set}" >&2
+echo "[ros2_netbench] cross-network ${MODE}/${ROLE}: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION} discovery=${ROS_DISCOVERY_SERVER:-not-set} timeout=${DISCOVERY_TIMEOUT}s" >&2
+if [[ "${MODE}" == "stream" && "${ROLE}" == "receiver" ]]; then
+  echo "[ros2_netbench] receiver is waiting for the sender; start netbench_run on DEVICE_A before this timeout expires" >&2
+elif [[ "${MODE}" == "stream" && "${ROLE}" == "sender" ]]; then
+  echo "[ros2_netbench] sender is waiting for the receiver subscription through the discovery server" >&2
+fi
 exec ros2 run ros2_netbench run_benchmark "${ARGS[@]}" "$@"

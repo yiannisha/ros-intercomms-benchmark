@@ -46,6 +46,7 @@ export DURATION="${DURATION:-30}"
 export WARMUP="${WARMUP:-3}"
 export RATE_HZ="${RATE_HZ:-100}"
 export PAYLOAD_SIZE="${PAYLOAD_SIZE:-1024}"
+export DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-120}"
 
 if [[ "$RMW_IMPLEMENTATION" == "rmw_fastrtps_cpp" ]]; then
   unset CYCLONEDDS_URI
@@ -79,4 +80,26 @@ EOF
   export FASTDDS_DEFAULT_PROFILES_FILE="$_fastdds_profile"
 fi
 
-echo "ips.sh: local=${LOCAL_TAILSCALE_IP:-unknown} role=$ROLE rmw=$RMW_IMPLEMENTATION discovery=$ROS_DISCOVERY_SERVER profile=${FASTRTPS_DEFAULT_PROFILES_FILE:-none}" >&2
+netbench_discovery() {
+  LISTEN_ADDRESS="${LOCAL_TAILSCALE_IP:-0.0.0.0}" PORT="$DISCOVERY_PORT" "$_ips_dir/scripts/start_humble_discovery_server.sh"
+}
+
+netbench_run() {
+  "$_ips_dir/scripts/run_cross_network.sh" "$@"
+}
+
+netbench_env() {
+  printf '%s\n' \
+    "local=${LOCAL_TAILSCALE_IP:-unknown}" \
+    "role=$ROLE" \
+    "rmw=$RMW_IMPLEMENTATION" \
+    "discovery=$ROS_DISCOVERY_SERVER" \
+    "domain=$ROS_DOMAIN_ID" \
+    "session=$SESSION_ID" \
+    "timeout=$DISCOVERY_TIMEOUT" \
+    "profile=${FASTRTPS_DEFAULT_PROFILES_FILE:-none}"
+}
+
+echo "ips.sh: local=${LOCAL_TAILSCALE_IP:-unknown} role=$ROLE rmw=$RMW_IMPLEMENTATION discovery=$ROS_DISCOVERY_SERVER timeout=${DISCOVERY_TIMEOUT}s profile=${FASTRTPS_DEFAULT_PROFILES_FILE:-none}" >&2
+echo "ips.sh: receiver discovery server: netbench_discovery" >&2
+echo "ips.sh: benchmark runner: netbench_run" >&2

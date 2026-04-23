@@ -31,6 +31,59 @@ source install/setup.bash
 
 No non-ROS Python runtime dependencies are required for the benchmark logic.
 
+For the pinned ROS 2 Humble workflow, the repo also provides a setup wrapper:
+
+```bash
+scripts/setup_humble_workspace.sh
+```
+
+The Humble runner scripts source `/opt/ros/humble/setup.bash`, default to `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, default to `ROS_DOMAIN_ID=42`, and auto-build the workspace when `install/setup.bash` is missing. Set `ROS2_NETBENCH_AUTO_BUILD=0` to require an existing build instead.
+
+## Humble Stream Quick Start
+
+Run a complete loopback stream benchmark on one machine:
+
+```bash
+DURATION=10 RATE_HZ=100 PAYLOAD_SIZE=1024 scripts/run_local_stream.sh
+```
+
+The script starts a receiver, waits briefly, starts a sender with the same session ID, and writes paired result directories under `results/local_stream/`. The receiver `summary.json` is the main artifact for delivery metrics.
+
+Run the stream benchmark across two machines on the same LAN:
+
+```bash
+# Machine B, receiver
+ROS_DOMAIN_ID=42 SESSION_ID=4242 ROLE=receiver OUTPUT_DIR=results/lan_rx \
+  scripts/run_same_lan.sh
+```
+
+```bash
+# Machine A, sender
+ROS_DOMAIN_ID=42 SESSION_ID=4242 ROLE=sender OUTPUT_DIR=results/lan_tx \
+  scripts/run_same_lan.sh
+```
+
+Run the stream benchmark across routed networks, VPNs, or different subnets with a Fast DDS discovery server:
+
+```bash
+# On one reachable machine
+LISTEN_ADDRESS=0.0.0.0 PORT=11811 scripts/start_humble_discovery_server.sh
+```
+
+```bash
+# Machine B, receiver
+ROS_DOMAIN_ID=42 ROS_DISCOVERY_SERVER=<server-ip>:11811 SESSION_ID=4242 ROLE=receiver \
+  OUTPUT_DIR=results/cross_rx scripts/run_cross_network.sh
+```
+
+```bash
+# Machine A, sender
+ROS_DOMAIN_ID=42 ROS_DISCOVERY_SERVER=<server-ip>:11811 SESSION_ID=4242 ROLE=sender \
+  OUTPUT_DIR=results/cross_tx scripts/run_cross_network.sh
+```
+
+You can use `DISCOVERY_SERVER=<server-ip>:11811` as a shorthand for `ROS_DISCOVERY_SERVER`. Start the receiver before the sender. Keep `ROS_DOMAIN_ID`, `SESSION_ID`, QoS settings, topic, rate, payload size, duration, and discovery settings aligned across both machines.
+
 ### Docker Development Environment
 
 On machines without a native ROS 2 install, use the repo-local Docker environment:
@@ -151,7 +204,7 @@ ros2 run ros2_netbench run_benchmark \
 
 ## Same-LAN Quick Start
 
-On both machines, use the same ROS domain ID and source the workspace:
+On both machines, use the same ROS domain ID and source the workspace, or use `scripts/run_same_lan.sh` from the Humble quick start above:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -227,18 +280,18 @@ Across routed networks, VPNs, or Tailscale-style overlays, do not assume multica
 
 Common options:
 
-- Fast DDS discovery server: set `ROS_DISCOVERY_SERVER=<server-ip>:11811` on both machines, or provide a Fast DDS XML profile through `FASTDDS_DEFAULT_PROFILES_FILE`.
+- Fast DDS discovery server: run `scripts/start_humble_discovery_server.sh` on one reachable machine and set `ROS_DISCOVERY_SERVER=<server-ip>:11811` on both benchmark machines, or provide a Fast DDS XML profile through `FASTDDS_DEFAULT_PROFILES_FILE`.
 - Cyclone DDS static peers: set `CYCLONEDDS_URI=file:///path/to/cyclonedds.xml` with peer addresses.
 - Any routed/VPN network is acceptable if DDS discovery and data paths are reachable.
 
-Example RTT over a routed/VPN network:
+Example stream benchmark over a routed/VPN network:
 
 Machine B:
 
 ```bash
 export ROS_DOMAIN_ID=42
 export ROS_DISCOVERY_SERVER=100.64.0.10:11811
-ros2 run ros2_netbench run_benchmark --mode ping --role server --discovery-timeout 30
+SESSION_ID=4242 ROLE=receiver scripts/run_cross_network.sh
 ```
 
 Machine A:
@@ -246,18 +299,15 @@ Machine A:
 ```bash
 export ROS_DOMAIN_ID=42
 export ROS_DISCOVERY_SERVER=100.64.0.10:11811
-ros2 run ros2_netbench run_benchmark \
-  --mode ping --role client \
-  --rate-hz 20 --payload-size 1024 \
-  --duration 60 --warmup 5 \
-  --discovery-timeout 30
+SESSION_ID=4242 ROLE=sender DURATION=60 WARMUP=5 RATE_HZ=20 PAYLOAD_SIZE=1024 \
+  scripts/run_cross_network.sh
 ```
 
-The wrapper script prints the same reminder:
+The wrapper script prints the same discovery reminder and still accepts direct CLI overrides:
 
 ```bash
-MODE=ping ROLE=server scripts/run_cross_network.sh
-MODE=ping ROLE=client scripts/run_cross_network.sh --duration 60
+ROLE=receiver scripts/run_cross_network.sh --duration 60
+ROLE=sender scripts/run_cross_network.sh --duration 60
 ```
 
 ## QoS Examples
