@@ -18,6 +18,8 @@ def summarize(path: Path) -> dict[str, Any]:
         "sent": summary.get("sent_messages"),
         "received": summary.get("received_messages"),
         "loss_rate": summary.get("application_level_loss_rate"),
+        "duplicate_count": summary.get("duplicate_count"),
+        "out_of_order_count": summary.get("out_of_order_count"),
         "timeout_count": summary.get("timeout_count"),
         "rtt_p95_ms": (summary.get("RTT") or {}).get("p95"),
         "one_way_p95_ms": (summary.get("one_way_latency") or {}).get("p95"),
@@ -34,7 +36,8 @@ def main(argv: list[str] | None = None) -> int:
         item = summarize(Path(run_dir))
         print(
             "{run_dir}: mode={mode} role={role} sent={sent} received={received} "
-            "loss_rate={loss_rate} timeouts={timeout_count} rtt_p95_ms={rtt_p95_ms} "
+            "loss_rate={loss_rate} duplicates={duplicate_count} "
+            "out_of_order={out_of_order_count} timeouts={timeout_count} "
             "one_way_p95_ms={one_way_p95_ms} throughput_mps={throughput_mps}".format(**item)
         )
     return 0

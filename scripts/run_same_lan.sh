@@ -4,7 +4,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/_humble_env.sh"
 
-MODE="${MODE:-stream}"
 ROLE="${ROLE:-receiver}"
 OUTPUT_DIR="${OUTPUT_DIR:-results}"
 PAYLOAD_SIZE="${PAYLOAD_SIZE:-1024}"
@@ -17,7 +16,7 @@ TOPIC="${TOPIC:-/netbench/stream}"
 DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-10}"
 
 ARGS=(
-  --mode "${MODE}"
+  --mode stream
   --role "${ROLE}"
   --topic "${TOPIC}"
   --payload-size "${PAYLOAD_SIZE}"
@@ -34,5 +33,5 @@ if [[ -n "${SESSION_ID:-}" ]]; then
   ARGS+=(--session-id "${SESSION_ID}")
 fi
 
-echo "[ros2_netbench] same-LAN ${MODE}/${ROLE}: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION}" >&2
+echo "[ros2_netbench] same-LAN stream/${ROLE}: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION:-ros-default}" >&2
 exec ros2 run ros2_netbench run_benchmark "${ARGS[@]}" "$@"

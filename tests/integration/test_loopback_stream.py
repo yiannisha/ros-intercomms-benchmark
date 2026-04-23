@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import importlib
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,12 @@ def _skip_without_ros() -> None:
         pytest.skip("rclpy is not available")
     if importlib.util.find_spec("ros2_netbench_interfaces") is None:
         pytest.skip("ros2_netbench_interfaces is not available")
+    try:
+        msg_module = importlib.import_module("ros2_netbench_interfaces.msg")
+    except ImportError:
+        pytest.skip("ros2_netbench_interfaces.msg is not importable")
+    if not hasattr(msg_module, "BenchmarkPacket"):
+        pytest.skip("generated BenchmarkPacket message is not available; build and source the workspace")
 
 
 def test_loopback_stream_sender_receiver(tmp_path: Path):

@@ -1,27 +1,43 @@
 # ros2_netbench
 
-`ros2_netbench` is a Python ROS 2 benchmarking toolkit for measuring application-level communication quality between two machines. It is Linux-first, uses `rclpy`, supports ROS 2 Humble and Jazzy or newer, and writes machine-readable artifacts for repeatable experiments.
+`ros2_netbench` is a small ROS 2 pub/sub stream benchmark. It exists to answer one question:
 
-The repo contains two ROS 2 packages:
+> If one ROS 2 node publishes a stream on one machine, how well does another ROS 2 node receive it on another machine?
 
-- `ros2_netbench_interfaces`: custom packet message and echo service definitions.
-- `ros2_netbench`: Python benchmark nodes, CLI runner, launch files, analysis helpers, and Linux scripts.
+The benchmark uses normal ROS 2 communication through `rclpy`, the active RMW implementation, DDS discovery, DDS QoS, and a custom ROS 2 message. It does not replace ROS 2 networking with a custom socket protocol.
 
-## What It Measures
+## What Is Included
 
-The toolkit measures ROS 2 application-level behavior:
+- One publisher role: sends `BenchmarkPacket` messages at a configured rate.
+- One subscriber role: receives the stream and writes delivery metrics.
+- One custom message package: `ros2_netbench_interfaces/msg/BenchmarkPacket.msg`.
+- Result artifacts: `run_metadata.json`, `summary.json`, and `raw_samples.csv`.
+- Optional local process/NIC sampling with `--sample-system --nic <interface>`.
+- Optional `rosbag2` recording with `--bag`.
 
-- Pub/sub stream delivery quality: throughput, loss inferred from sequence gaps, duplicates, out-of-order delivery, inter-arrival jitter, publish-period jitter, and optional one-way latency.
-- Ping/pong RTT: round-trip latency without synchronized clocks.
-- Service latency: request/response latency, timeout rate, achieved request rate.
-- Session timing: discovery time, connection-ready time, experiment start/end timestamps.
-- Optional local process and NIC sampling: CPU percent, RSS memory, NIC TX/RX bps when a Linux interface is provided.
+The repo intentionally does not include service benchmarks, ping/pong RTT benchmarks, alternate transports, or application-specific discovery code.
 
-It does not measure raw IP packet loss directly. Application-level message loss is the number of missing ROS benchmark sequence numbers observed by the receiver/client. Raw packet loss can be lower or higher depending on DDS fragmentation, retransmission, QoS reliability, kernel queues, Wi-Fi behavior, and middleware buffering.
+## Important ROS 2 Networking Reality
+
+ROS 2 uses DDS by default. On a simple same-LAN setup, DDS discovery is usually automatic when both machines use the same `ROS_DOMAIN_ID` and compatible RMW/QoS settings.
+
+Across routed networks, VPNs, or tailnets, multicast discovery often does not cross the network boundary. That is still a ROS 2/DDS problem, not something this benchmark hides. Configure the RMW explicitly before running the benchmark:
+
+- Fast DDS: run a Fast DDS discovery server and set `ROS_DISCOVERY_SERVER=<server-ip>:11811` on both machines.
+- Cyclone DDS: install `rmw_cyclonedds_cpp`, set `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, and set `CYCLONEDDS_URI=file:///path/to/cyclonedds-peers.xml` with explicit peer addresses.
+
+For ROS 2 Humble, ROS 2 documentation says DDS is the default middleware and Fast DDS is the default RMW vendor. The benchmark does not force that default; it uses whichever RMW your ROS 2 environment selects.
+
+References:
+
+- ROS 2 Humble RMW implementations: https://docs.ros.org/en/humble/Installation/RMW-Implementations.html
+- ROS 2 discovery concept: https://docs.ros.org/en/humble/Concepts/Basic/About-Discovery.html
+- ROS 2 Fast DDS discovery server tutorial: https://docs.ros.org/en/humble/Tutorials/Advanced/Discovery-Server/Discovery-Server.html
+- Cyclone DDS configuration guide: https://cyclonedds.io/docs/cyclonedds/latest/config/index
 
 ## Build
 
-Install ROS 2 Humble, Jazzy, or newer, source your ROS environment, then build the workspace from the repo root:
+Install ROS 2 and `colcon`, then build from the repo root:
 
 ```bash
 source /opt/ros/humble/setup.bash
@@ -29,401 +45,171 @@ colcon build --symlink-install
 source install/setup.bash
 ```
 
-No non-ROS Python runtime dependencies are required for the benchmark logic.
-
-For the pinned ROS 2 Humble workflow, the repo also provides a setup wrapper:
+The helper script defaults to Humble but also respects `ROS_DISTRO`:
 
 ```bash
 scripts/setup_humble_workspace.sh
 ```
 
-The Humble runner scripts source `/opt/ros/humble/setup.bash`, default to `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, default to `ROS_DOMAIN_ID=42`, and auto-build the workspace when `install/setup.bash` is missing. Set `ROS2_NETBENCH_AUTO_BUILD=0` to require an existing build instead.
+## Local Loopback Smoke Test
 
-## Humble Stream Quick Start
-
-Run a complete loopback stream benchmark on one machine:
+Run both roles on one machine:
 
 ```bash
 DURATION=10 RATE_HZ=100 PAYLOAD_SIZE=1024 scripts/run_local_stream.sh
 ```
 
-The script starts a receiver, waits briefly, starts a sender with the same session ID, and writes paired result directories under `results/local_stream/`. The receiver `summary.json` is the main artifact for delivery metrics.
-
-Run the stream benchmark across two machines on the same LAN:
+The subscriber summary is the main artifact:
 
 ```bash
-# Machine B, receiver
-ROS_DOMAIN_ID=42 SESSION_ID=4242 ROLE=receiver OUTPUT_DIR=results/lan_rx \
-  scripts/run_same_lan.sh
+ros2 run ros2_netbench summarize_run results/local_stream/local_receiver_<session-id>
 ```
 
-```bash
-# Machine A, sender
-ROS_DOMAIN_ID=42 SESSION_ID=4242 ROLE=sender OUTPUT_DIR=results/lan_tx \
-  scripts/run_same_lan.sh
-```
+## Same-LAN Test
 
-Run the stream benchmark across routed networks, VPNs, or different subnets with a Fast DDS discovery server:
-
-```bash
-# On one reachable machine
-LISTEN_ADDRESS=0.0.0.0 PORT=11811 scripts/start_humble_discovery_server.sh
-```
-
-```bash
-# Machine B, receiver
-ROS_DOMAIN_ID=42 ROS_DISCOVERY_SERVER=<server-ip>:11811 SESSION_ID=4242 ROLE=receiver \
-  OUTPUT_DIR=results/cross_rx scripts/run_cross_network.sh
-```
-
-```bash
-# Machine A, sender
-ROS_DOMAIN_ID=42 ROS_DISCOVERY_SERVER=<server-ip>:11811 SESSION_ID=4242 ROLE=sender \
-  OUTPUT_DIR=results/cross_tx scripts/run_cross_network.sh
-```
-
-You can use `DISCOVERY_SERVER=<server-ip>:11811` as a shorthand for `ROS_DISCOVERY_SERVER`. Start the receiver before the sender. Keep `ROS_DOMAIN_ID`, `SESSION_ID`, QoS settings, topic, rate, payload size, duration, and discovery settings aligned across both machines.
-
-### Docker Development Environment
-
-On machines without a native ROS 2 install, use the repo-local Docker environment:
-
-```bash
-scripts/dev_shell.sh
-```
-
-The script builds the `ros2-netbench:humble` image by default, mounts the repo at `/workspace`, sources ROS 2, runs `colcon build --symlink-install` if the workspace has not been built yet, sources `install/setup.bash`, and opens a shell ready for `ros2 run ...` commands.
-
-Use another supported distro by setting `ROS_DISTRO`:
-
-```bash
-ROS_DISTRO=jazzy scripts/dev_shell.sh
-```
-
-Run the repeatable Docker build and test path:
-
-```bash
-ROS_DISTRO=humble scripts/test_ros_distro.sh
-ROS_DISTRO=jazzy scripts/test_ros_distro.sh
-```
-
-From inside that shell, verify the environment with:
-
-```bash
-python3 -m pytest tests/unit
-python3 -m pytest tests/integration
-```
-
-Docker Desktop is useful for local development and loopback testing. For real LAN or cross-network benchmarking, a native Linux ROS 2 environment is still recommended because DDS multicast, host networking, and NIC-level impairment tools behave differently inside Docker Desktop.
-
-## Benchmark Modes
-
-### 1. Pub/Sub Stream
-
-Machine B, receiver:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode stream --role receiver \
-  --domain-id 42 \
-  --topic /netbench/stream \
-  --rate-hz 100 --payload-size 1024 \
-  --duration 30 --warmup 3 \
-  --output-dir results
-```
-
-Machine A, sender:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode stream --role sender \
-  --domain-id 42 \
-  --topic /netbench/stream \
-  --rate-hz 100 --payload-size 1024 \
-  --duration 30 --warmup 3 \
-  --output-dir results
-```
-
-Start the receiver before the sender. When `--session-id` is not provided, receivers accept the first session they see; senders generate a random session ID. Provide the same `--session-id` on both sides when you want strict filtering.
-
-For stream mode, read the receiver's `summary.json` for delivery metrics such as `received_messages`, `application_level_loss_count`, jitter, duplicates, and out-of-order counts. The sender summary reports local publish stats, so `received_messages` is intentionally `null` there.
-
-### 2. Ping/Pong RTT
-
-Machine B, server:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode ping --role server \
-  --domain-id 42 \
-  --topic /netbench/ping \
-  --echo-topic /netbench/pong \
-  --output-dir results
-```
-
-Machine A, client:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode ping --role client \
-  --domain-id 42 \
-  --topic /netbench/ping \
-  --echo-topic /netbench/pong \
-  --rate-hz 50 --payload-size 512 \
-  --duration 30 --warmup 3 \
-  --request-timeout 1.0 \
-  --output-dir results
-```
-
-RTT uses the client's monotonic clock and does not require synchronized wall clocks.
-
-### 3. Service Benchmark
-
-Machine B, service server:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode service --role server \
-  --domain-id 42 \
-  --service /netbench/service \
-  --output-dir results
-```
-
-Machine A, service client:
-
-```bash
-ros2 run ros2_netbench run_benchmark \
-  --mode service --role client \
-  --domain-id 42 \
-  --service /netbench/service \
-  --rate-hz 20 --payload-size 1024 \
-  --duration 30 --warmup 3 \
-  --request-timeout 1.0 \
-  --output-dir results
-```
-
-## Same-LAN Quick Start
-
-On both machines, use the same ROS domain ID and source the workspace, or use `scripts/run_same_lan.sh` from the Humble quick start above:
-
-```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-export ROS_DOMAIN_ID=42
-```
-
-Then run the receiver/server first and sender/client second. Same-subnet multicast discovery should work with the default RMW configuration if host firewalls allow DDS traffic.
-
-You can also use launch files:
-
-```bash
-ros2 launch ros2_netbench same_lan_stream.launch.py role:=receiver duration:=30 rate_hz:=100
-ros2 launch ros2_netbench same_lan_stream.launch.py role:=sender duration:=30 rate_hz:=100
-```
-
-## Cross-Network Real
-
-1. Build On Both Devices
-```bash
-cd /home/eden/ros-intercomms-benchmark
-scripts/setup_humble_workspace.sh
-```
-
-2. Start Discovery Server
-Run this on one device that both devices can reach. Replace <server-bind-ip> with that device’s reachable interface IP, or use
-`0.0.0.0.`
-
-```bash
-cd /home/eden/ros-intercomms-benchmark
-LISTEN_ADDRESS=0.0.0.0 PORT=11811 scripts/start_humble_discovery_server.sh
-```
-
-Keep this terminal open.
-
-3. Start Receiver
-Run this on the receiving device first. Replace <server-ip> with the IP of the device running the discovery server.
-
-```bash
-cd /home/eden/ros-intercomms-benchmark
-ROS_DOMAIN_ID=42 \
-ROS_DISCOVERY_SERVER=<server-ip>:11811 \
-SESSION_ID=4242 \
-ROLE=receiver \
-OUTPUT_DIR=results/cross_rx \
-DURATION=30 \
-WARMUP=3 \
-RATE_HZ=100 \
-PAYLOAD_SIZE=1024 \
-scripts/run_cross_network.sh
-```
-
-4. Start Sender
-Run this on the sending device second.
-
-```bash
-cd /home/eden/ros-intercomms-benchmark
-ROS_DOMAIN_ID=42 \
-ROS_DISCOVERY_SERVER=<server-ip>:11811 \
-SESSION_ID=4242 \
-ROLE=sender \
-OUTPUT_DIR=results/cross_tx \
-DURATION=30 \
-WARMUP=3 \
-RATE_HZ=100 \
-PAYLOAD_SIZE=1024 \
-scripts/run_cross_network.sh
-```
-
-## Cross-Network Quick Start
-
-Across routed networks, VPNs, or Tailscale-style overlays, do not assume multicast discovery works. The benchmark code does not hardcode a VPN provider; it only requires IP reachability and a DDS discovery setup that can find peers.
-
-Common options:
-
-- Fast DDS discovery server: run `scripts/start_humble_discovery_server.sh` on one reachable machine and set `ROS_DISCOVERY_SERVER=<server-ip>:11811` on both benchmark machines, or provide a Fast DDS XML profile through `FASTDDS_DEFAULT_PROFILES_FILE`.
-- Cyclone DDS static peers: set `CYCLONEDDS_URI=file:///path/to/cyclonedds.xml` with peer addresses.
-- Any routed/VPN network is acceptable if DDS discovery and data paths are reachable.
-
-Example stream benchmark over a routed/VPN network:
+Use the same `ROS_DOMAIN_ID` on both machines. Start the subscriber first.
 
 Machine B:
 
 ```bash
-export ROS_DOMAIN_ID=42
-export ROS_DISCOVERY_SERVER=100.64.0.10:11811
-SESSION_ID=4242 ROLE=receiver scripts/run_cross_network.sh
+ROS_DOMAIN_ID=42 ROLE=receiver OUTPUT_DIR=results/lan_rx \
+  DURATION=30 RATE_HZ=100 PAYLOAD_SIZE=1024 \
+  scripts/run_same_lan.sh
 ```
 
 Machine A:
 
 ```bash
+ROS_DOMAIN_ID=42 ROLE=sender OUTPUT_DIR=results/lan_tx \
+  DURATION=30 RATE_HZ=100 PAYLOAD_SIZE=1024 \
+  scripts/run_same_lan.sh
+```
+
+If same-LAN discovery does not work, first verify normal ROS 2 discovery with `ros2 node list` or a standard talker/listener demo in the same environment. This benchmark should not be your first discovery diagnostic tool.
+
+## Cross-Network With Fast DDS Discovery Server
+
+Run this on a machine both devices can reach:
+
+```bash
+LISTEN_ADDRESS=0.0.0.0 PORT=11811 scripts/start_humble_discovery_server.sh
+```
+
+On both benchmark machines, set the same domain and discovery server. Start the subscriber first.
+
+Machine B:
+
+```bash
+ROS_DOMAIN_ID=42 \
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+ROS_DISCOVERY_SERVER=<server-ip>:11811 \
+SESSION_ID=4242 \
+ROLE=receiver \
+OUTPUT_DIR=results/cross_rx \
+DISCOVERY_TIMEOUT=30 \
+scripts/run_cross_network.sh
+```
+
+Machine A:
+
+```bash
+ROS_DOMAIN_ID=42 \
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp \
+ROS_DISCOVERY_SERVER=<server-ip>:11811 \
+SESSION_ID=4242 \
+ROLE=sender \
+OUTPUT_DIR=results/cross_tx \
+DURATION=30 RATE_HZ=100 PAYLOAD_SIZE=1024 \
+DISCOVERY_TIMEOUT=30 \
+scripts/run_cross_network.sh
+```
+
+`DISCOVERY_SERVER=<server-ip>:11811` is accepted as a shorthand for `ROS_DISCOVERY_SERVER`.
+
+## Cross-Network With Cyclone DDS Static Peers
+
+Install Cyclone DDS RMW on both machines if it is not already available:
+
+```bash
+sudo apt install ros-${ROS_DISTRO:-humble}-rmw-cyclonedds-cpp
+```
+
+Create a Cyclone DDS peer config on each machine. Use each machine's own tailnet/VPN address as `INTERFACE_ADDRESS` and the other machine's address as `PEERS`.
+
+Machine B:
+
+```bash
+PEERS=<machine-a-ip> INTERFACE_ADDRESS=<machine-b-ip> \
+  OUTPUT=cyclonedds-peers.xml scripts/write_cyclonedds_peers.sh
+```
+
+Machine A:
+
+```bash
+PEERS=<machine-b-ip> INTERFACE_ADDRESS=<machine-a-ip> \
+  OUTPUT=cyclonedds-peers.xml scripts/write_cyclonedds_peers.sh
+```
+
+Then run the benchmark with Cyclone DDS on both machines:
+
+```bash
 export ROS_DOMAIN_ID=42
-export ROS_DISCOVERY_SERVER=100.64.0.10:11811
-SESSION_ID=4242 ROLE=sender DURATION=60 WARMUP=5 RATE_HZ=20 PAYLOAD_SIZE=1024 \
-  scripts/run_cross_network.sh
+export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+export CYCLONEDDS_URI=file://$PWD/cyclonedds-peers.xml
 ```
 
-The wrapper script prints the same discovery reminder and still accepts direct CLI overrides:
+Machine B:
 
 ```bash
-ROLE=receiver scripts/run_cross_network.sh --duration 60
-ROLE=sender scripts/run_cross_network.sh --duration 60
+SESSION_ID=4242 ROLE=receiver OUTPUT_DIR=results/cyclone_rx \
+  DISCOVERY_TIMEOUT=30 scripts/run_cross_network.sh
 ```
 
-## QoS Examples
+Machine A:
 
-Reliable, deeper queue:
+```bash
+SESSION_ID=4242 ROLE=sender OUTPUT_DIR=results/cyclone_tx \
+  DURATION=30 RATE_HZ=100 PAYLOAD_SIZE=1024 \
+  DISCOVERY_TIMEOUT=30 scripts/run_cross_network.sh
+```
+
+## Direct CLI
+
+Subscriber:
 
 ```bash
 ros2 run ros2_netbench run_benchmark \
-  --mode stream --role sender \
-  --reliability reliable --history keep_last --depth 50
+  --role receiver \
+  --topic /netbench/stream \
+  --duration 30 --warmup 3 \
+  --output-dir results
 ```
 
-Best effort:
+Publisher:
 
 ```bash
 ros2 run ros2_netbench run_benchmark \
-  --mode stream --role sender \
-  --reliability best_effort --history keep_last --depth 10
+  --role sender \
+  --topic /netbench/stream \
+  --rate-hz 100 --payload-size 1024 \
+  --duration 30 --warmup 3 \
+  --output-dir results
 ```
 
-Other QoS controls:
+Common options:
 
 ```bash
---durability volatile
---durability transient_local
---deadline-ms 100
---liveliness automatic
---liveliness manual_by_topic
-```
-
-Use matching QoS on both sides unless you are intentionally testing incompatibility or discovery behavior.
-
-## Payload Size Examples
-
-Small control-style packets:
-
-```bash
---payload-size 64 --rate-hz 100
-```
-
-Larger payloads:
-
-```bash
---payload-size 1048576 --rate-hz 5
-```
-
-`--payload-size` controls the allocated `uint8[] payload` length in each benchmark packet. ROS/DDS framing adds additional wire overhead.
-
-## Clock Synchronization
-
-The packet includes both sender monotonic and sender wall-clock timestamps:
-
-- Monotonic timestamps are used for local intervals, publish jitter, receive jitter, RTT, and service latency.
-- Wall-clock timestamps are used only for one-way latency across machines.
-
-One-way latency is disabled by default because unsynchronized clocks produce misleading values:
-
-```json
-"one_way_latency": {
-  "valid": false,
-  "reason": "clock_sync_unknown"
-}
-```
-
-Check clock status:
-
-```bash
-scripts/sync_clock_check.sh user@machine-b
-```
-
-Enable one-way latency only when clocks are synchronized well enough:
-
-```bash
+--session-id 4242
+--reliability reliable|best_effort
+--depth 10
+--sample-system --nic tailscale0
 --clock-sync ok
+--clock-sync offset --clock-offset-ms 0.42
 ```
 
-Or provide a measured receiver-minus-sender offset:
+One-way latency is marked invalid unless you explicitly confirm clock synchronization with `--clock-sync ok` or provide an offset. Throughput, loss, duplicates, out-of-order delivery, and jitter do not require synchronized wall clocks.
 
-```bash
---clock-sync offset --clock-offset-ms 0.42 --max-clock-offset-ms 1.0
-```
-
-RTT and service latency remain valid without wall-clock synchronization.
-
-## Network Impairment
-
-The Linux `tc netem` helper supports latency, jitter, loss, duplication, reordering, and rate limiting.
-
-Show current qdisc:
-
-```bash
-scripts/impair_network.sh show eth0
-```
-
-Apply latency, jitter, and packet loss:
-
-```bash
-sudo scripts/impair_network.sh apply eth0 \
-  --latency-ms 40 \
-  --jitter-ms 5 \
-  --loss-pct 1
-```
-
-Apply rate limiting:
-
-```bash
-sudo scripts/impair_network.sh apply eth0 --rate 10mbit
-```
-
-Clear impairment:
-
-```bash
-sudo scripts/impair_network.sh clear eth0
-```
-
-## Output Artifacts
+## Output
 
 Each role writes a run directory under `--output-dir`:
 
@@ -434,25 +220,19 @@ results/<run_id>/
   raw_samples.csv
   system_stats.csv        # only with --sample-system
   rosbag/                 # only with --bag
-  trace/                  # only with --trace
 ```
 
-`raw_samples.csv` contains:
+`summary.json` includes:
 
-- `timestamp`
-- `seq`
-- `send_time_ns`
-- `receive_time_ns`
-- `local_receive_monotonic_ns`
-- `rtt_ns`
-- `payload_size`
-- `reordered`
-- `duplicate`
-- `lost_gap_detected`
-- `gap_size`
-- `timeout`
-
-`summary.json` includes the aggregate metrics requested for the mode: sent/received counts, loss, duplicates, out-of-order count, throughput, RTT or one-way latency summaries, jitter, timeout count, discovery timing, and optional system metrics.
+- sent and received message counts
+- application-level sequence loss
+- duplicate and out-of-order counts
+- throughput in messages/sec and payload bytes/sec
+- inter-arrival jitter
+- publish-period jitter
+- optional one-way latency
+- discovery and first-packet timing
+- optional process/NIC samples
 
 Post-run helpers:
 
@@ -461,62 +241,16 @@ ros2 run ros2_netbench summarize_run results/<run_id>
 ros2 run ros2_netbench compare_runs results/run_a results/run_b --output comparison.md
 ```
 
-## System Sampling
+## Troubleshooting
 
-Enable local process and NIC sampling:
-
-```bash
---sample-system --nic eth0
-```
-
-The sampler reads `/proc` directly. It reports current process CPU percent, process RSS memory, and interface TX/RX bps when the interface exists. Each role reports its own local metrics, for example sender-side CPU in the sender result directory and receiver-side CPU in the receiver result directory.
-
-## Optional Bag and Tracing
-
-Record benchmark topics:
-
-```bash
---bag
-```
-
-Start ROS 2 tracing if installed:
-
-```bash
---trace
-```
-
-These features shell out to `ros2 bag record` and `ros2 trace`. If the command is not installed, the runner fails with a clear error.
-
-## Metric Interpretation
-
-- `sent_messages`: messages or requests sent during the measurement phase. Stream receiver infers this from observed sequence range; the sender summary has the exact local sent count.
-- `received_messages`: measurement-phase messages/replies/responses observed by the receiving role.
-- `application_level_loss_count`: missing benchmark sequence numbers or missing replies/responses. This is not raw IP loss.
-- `duplicate_count`: repeated sequence numbers received after already seeing the same sequence.
-- `out_of_order_count`: non-duplicate sequence numbers that arrive lower than the highest sequence already observed.
-- `throughput_messages_per_sec`: received or completed messages per measurement duration.
-- `throughput_bytes_per_sec`: payload bytes per second, excluding ROS/DDS overhead.
-- `RTT`: min/mean/std/p50/p90/p95/p99/max in milliseconds for ping and service clients.
-- `one_way_latency`: same latency summary for stream receivers, valid only when clock sync is explicitly accepted.
-- `inter_arrival_jitter_ms`: sample standard deviation of receiver inter-arrival periods.
-- `publish_period_jitter_ms`: sample standard deviation of sender/client send periods.
-- `receiver_gap_events`: number of online sequence jumps observed by a receiver.
-- `timeout_count`: timed-out requests or discovery/first-packet timeout marker depending on role.
-
-Warmup samples are excluded from final stats.
-
-## Troubleshooting Discovery
-
-If nodes do not connect:
-
-1. Confirm both machines source the same built workspace and use the same `ROS_DOMAIN_ID`.
-2. Check `RMW_IMPLEMENTATION` matches your intended middleware.
-3. On same LAN, verify multicast is allowed and host firewalls permit DDS traffic.
-4. Across networks, configure explicit discovery peers or a discovery server; do not rely on multicast.
-5. Increase `--discovery-timeout 30` for routed/VPN links.
-6. Use `ros2 node list`, `ros2 topic list`, and `ros2 service list` in the same environment.
-7. Keep QoS compatible across endpoints.
-8. Verify basic IP reachability with `ping`, `nc`, or your site’s approved network tools.
+1. Confirm both machines built and sourced the same workspace.
+2. Confirm `ROS_DOMAIN_ID` matches.
+3. Confirm `RMW_IMPLEMENTATION` matches your intended middleware.
+4. Confirm `ROS_LOCALHOST_ONLY` is not set to `1`.
+5. On same LAN, verify multicast is allowed by the network and host firewall.
+6. Across a tailnet/VPN, use Fast DDS discovery server or Cyclone DDS static peers instead of assuming multicast discovery will work.
+7. Keep topic name and QoS compatible on both roles.
+8. Increase `DISCOVERY_TIMEOUT` for slow cross-network discovery.
 
 ## Tests
 

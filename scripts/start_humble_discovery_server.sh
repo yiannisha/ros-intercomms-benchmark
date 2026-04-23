@@ -7,13 +7,8 @@ SERVER_ID="${SERVER_ID:-0}"
 LISTEN_ADDRESS="${LISTEN_ADDRESS:-0.0.0.0}"
 PORT="${PORT:-11811}"
 
-if [[ "${ROS_DISTRO}" != "humble" ]]; then
-  echo "This discovery helper is pinned to ROS 2 Humble. Set ROS_DISTRO=humble." >&2
-  exit 2
-fi
-
 if [[ ! -f "${ROS_SETUP}" ]]; then
-  echo "Missing ${ROS_SETUP}; install ROS 2 Humble before starting discovery." >&2
+  echo "Missing ${ROS_SETUP}; install ROS 2 ${ROS_DISTRO} before starting discovery." >&2
   exit 1
 fi
 

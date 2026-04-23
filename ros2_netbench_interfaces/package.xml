@@ -2,7 +2,7 @@
 <package format="3">
   <name>ros2_netbench_interfaces</name>
   <version>0.1.0</version>
-  <description>ROS 2 interfaces for network benchmark packets and services.</description>
+  <description>ROS 2 interface for network benchmark stream packets.</description>
   <maintainer email="maintainer@example.com">ros2_netbench maintainers</maintainer>
   <license>Apache-2.0</license>
 

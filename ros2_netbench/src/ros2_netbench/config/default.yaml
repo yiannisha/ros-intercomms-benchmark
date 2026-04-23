@@ -4,8 +4,6 @@ benchmark:
   duration: 10.0
   warmup: 2.0
   topic: /netbench/stream
-  echo_topic: /netbench/pong
-  service: /netbench/service
 qos:
   reliability: reliable
   history: keep_last

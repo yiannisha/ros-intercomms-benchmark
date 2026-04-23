@@ -19,6 +19,8 @@ from ros2_netbench.utils.qos import QosConfig, add_qos_arguments, qos_config_fro
 
 DISCOVERY_ENV_KEYS = (
     "ROS_DOMAIN_ID",
+    "ROS_LOCALHOST_ONLY",
+    "ROS_AUTOMATIC_DISCOVERY_RANGE",
     "RMW_IMPLEMENTATION",
     "ROS_DISCOVERY_SERVER",
     "ROS_SUPER_CLIENT",
@@ -41,8 +43,6 @@ class RunConfig:
     session_id: int
     domain_id: int | None
     topic: str
-    echo_topic: str
-    service: str
     qos: QosConfig
     clock_sync: str
     max_clock_offset_ms: float
@@ -51,7 +51,6 @@ class RunConfig:
     nic: str | None
     bag: bool
     trace: bool
-    request_timeout_s: float
     discovery_timeout_s: float
 
     def metadata(self) -> dict[str, Any]:
@@ -69,8 +68,6 @@ class RunConfig:
             "session_id": self.session_id,
             "domain_id": self.domain_id,
             "topic": self.topic,
-            "echo_topic": self.echo_topic,
-            "service": self.service,
             "qos": self.qos.as_dict(),
             "clock_sync": {
                 "mode": self.clock_sync,
@@ -81,7 +78,6 @@ class RunConfig:
             "nic": self.nic,
             "bag": self.bag,
             "trace": self.trace,
-            "request_timeout_s": self.request_timeout_s,
             "discovery_timeout_s": self.discovery_timeout_s,
             "environment": {
                 key: os.environ.get(key)
@@ -185,12 +181,12 @@ def new_run_id(mode: str, role: str) -> str:
 
 
 def add_common_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--mode", choices=["stream", "ping", "service"], required=True)
+    parser.add_argument("--mode", choices=["stream"], default="stream")
     parser.add_argument(
         "--role",
-        choices=["sender", "receiver", "client", "server"],
+        choices=["sender", "receiver"],
         required=True,
-        help="stream uses sender/receiver; ping and service use client/server",
+        help="sender publishes BenchmarkPacket samples; receiver subscribes and measures them",
     )
     parser.add_argument("--payload-size", type=int, default=1024)
     parser.add_argument("--rate-hz", type=float, default=10.0)
@@ -199,8 +195,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--session-id", type=int, default=None)
     parser.add_argument("--domain-id", type=int, default=None)
     parser.add_argument("--topic", default="/netbench/stream")
-    parser.add_argument("--echo-topic", default="/netbench/pong")
-    parser.add_argument("--service", default="/netbench/service")
     parser.add_argument("--output-dir", default="results")
     parser.add_argument("--run-id", default=None)
     parser.add_argument(
@@ -215,7 +209,6 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--nic", default=None, help="Linux network interface to sample, e.g. eth0")
     parser.add_argument("--bag", action="store_true", help="Record benchmark topics with rosbag2")
     parser.add_argument("--trace", action="store_true", help="Start ros2 tracing if installed")
-    parser.add_argument("--request-timeout", type=float, default=1.0)
     parser.add_argument("--discovery-timeout", type=float, default=10.0)
     add_qos_arguments(parser)
 
@@ -237,20 +230,14 @@ def config_from_args(args: argparse.Namespace) -> RunConfig:
         raise ValueError("--duration must be > 0")
     if args.warmup < 0:
         raise ValueError("--warmup must be >= 0")
-    if args.request_timeout <= 0:
-        raise ValueError("--request-timeout must be > 0")
     if args.discovery_timeout <= 0:
         raise ValueError("--discovery-timeout must be > 0")
     if args.clock_sync == "offset" and args.clock_offset_ms is None:
         raise ValueError("--clock-sync offset requires --clock-offset-ms")
-    if args.mode == "stream" and args.role not in {"sender", "receiver"}:
-        raise ValueError("stream mode requires role sender or receiver")
-    if args.mode in {"ping", "service"} and args.role not in {"client", "server"}:
-        raise ValueError(f"{args.mode} mode requires role client or server")
 
     session_id = args.session_id
     if session_id is None:
-        session_id = 0 if args.role in {"receiver", "server"} else secrets.randbits(63)
+        session_id = 0 if args.role == "receiver" else secrets.randbits(63)
     run_id = args.run_id or new_run_id(args.mode, args.role)
     return RunConfig(
         mode=args.mode,
@@ -264,8 +251,6 @@ def config_from_args(args: argparse.Namespace) -> RunConfig:
         session_id=session_id,
         domain_id=args.domain_id,
         topic=args.topic,
-        echo_topic=args.echo_topic,
-        service=args.service,
         qos=qos_config_from_args(args),
         clock_sync=args.clock_sync,
         max_clock_offset_ms=args.max_clock_offset_ms,
@@ -274,7 +259,6 @@ def config_from_args(args: argparse.Namespace) -> RunConfig:
         nic=args.nic,
         bag=args.bag,
         trace=args.trace,
-        request_timeout_s=args.request_timeout,
         discovery_timeout_s=args.discovery_timeout,
     )
 
@@ -302,6 +286,7 @@ def base_summary(config: RunConfig, started_wall: str, ended_wall: str) -> dict[
         "rate_hz": config.rate_hz,
         "duration_s": config.duration_s,
         "warmup_s": config.warmup_s,
+        "ros_transport": "dds",
         "qos": config.qos.as_dict(),
         "discovery_time_ms": None,
         "connection_ready_time_ms": None,

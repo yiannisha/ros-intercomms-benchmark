@@ -16,13 +16,13 @@ def main(argv: list[str] | None = None) -> int:
 
     rows = [summarize(Path(run_dir)) for run_dir in args.run_dirs]
     lines = [
-        "| run | mode | role | sent | received | loss rate | timeouts | rtt p95 ms | one-way p95 ms | msg/s |",
-        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| run | role | sent | received | loss rate | duplicates | out of order | one-way p95 ms | msg/s |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for row in rows:
         lines.append(
-            "| {run_dir} | {mode} | {role} | {sent} | {received} | {loss_rate} | "
-            "{timeout_count} | {rtt_p95_ms} | {one_way_p95_ms} | {throughput_mps} |".format(
+            "| {run_dir} | {role} | {sent} | {received} | {loss_rate} | "
+            "{duplicate_count} | {out_of_order_count} | {one_way_p95_ms} | {throughput_mps} |".format(
                 **row
             )
         )

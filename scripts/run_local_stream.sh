@@ -41,7 +41,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "[ros2_netbench] local stream receiver starting: domain=${ROS_DOMAIN_ID} session=${SESSION_ID}" >&2
+echo "[ros2_netbench] local stream receiver starting: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION:-ros-default} session=${SESSION_ID}" >&2
 ros2 run ros2_netbench run_benchmark \
   "${COMMON_ARGS[@]}" \
   --role receiver \
@@ -51,7 +51,7 @@ RECEIVER_PID="$!"
 
 sleep "${RECEIVER_START_DELAY}"
 
-echo "[ros2_netbench] local stream sender starting: domain=${ROS_DOMAIN_ID} session=${SESSION_ID}" >&2
+echo "[ros2_netbench] local stream sender starting: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION:-ros-default} session=${SESSION_ID}" >&2
 ros2 run ros2_netbench run_benchmark \
   "${COMMON_ARGS[@]}" \
   --role sender \

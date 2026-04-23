@@ -4,7 +4,10 @@ set -euo pipefail
 ROS_DISTRO="${ROS_DISTRO:-humble}"
 IMAGE="${IMAGE:-ros2-netbench-test:${ROS_DISTRO}}"
 ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-42}"
-RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+RMW_ENV=()
+if [[ -n "${RMW_IMPLEMENTATION:-}" ]]; then
+  RMW_ENV+=(--env "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}")
+fi
 
 docker build --build-arg "ROS_DISTRO=${ROS_DISTRO}" -f Dockerfile.ros2 -t "${IMAGE}" .
 
@@ -12,8 +15,8 @@ docker run --rm \
   --volume "${PWD}:/workspace" \
   --workdir /workspace \
   --env "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}" \
-  --env "RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION}" \
   --env "ROS_DISTRO=${ROS_DISTRO}" \
+  "${RMW_ENV[@]}" \
   "${IMAGE}" \
   bash -lc '
     set -eo pipefail

@@ -7,18 +7,12 @@ if [[ -n "${DISCOVERY_SERVER:-}" && -z "${ROS_DISCOVERY_SERVER:-}" ]]; then
   export ROS_DISCOVERY_SERVER="${DISCOVERY_SERVER}"
 fi
 
-source "${SCRIPT_DIR}/_humble_env.sh"
-
-if [[ -n "${ROS_DISCOVERY_SERVER:-}" && "${RMW_IMPLEMENTATION:-}" != "rmw_fastrtps_cpp" ]]; then
-  cat >&2 <<EOF
-[ros2_netbench] warning: ROS_DISCOVERY_SERVER is configured, but
-RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset}. The Fast DDS discovery server
-path requires RMW_IMPLEMENTATION=rmw_fastrtps_cpp; Cyclone DDS will ignore
-ROS_DISCOVERY_SERVER and needs CYCLONEDDS_URI/static peers instead.
-EOF
+if [[ -n "${CYCLONEDDS_CONFIG:-}" && -z "${CYCLONEDDS_URI:-}" ]]; then
+  export CYCLONEDDS_URI="file://${CYCLONEDDS_CONFIG}"
 fi
 
-MODE="${MODE:-stream}"
+source "${SCRIPT_DIR}/_humble_env.sh"
+
 ROLE="${ROLE:-receiver}"
 OUTPUT_DIR="${OUTPUT_DIR:-results}"
 PAYLOAD_SIZE="${PAYLOAD_SIZE:-1024}"
@@ -31,18 +25,19 @@ TOPIC="${TOPIC:-/netbench/stream}"
 DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-30}"
 
 cat >&2 <<EOF
-Cross-network mode expects routed reachability and explicit DDS discovery when
-multicast is unavailable. Configure your RMW before running, for example:
-  export ROS_DISCOVERY_SERVER=<server-ip>:11811
-  # or use the shorthand accepted by this script:
-  export DISCOVERY_SERVER=<server-ip>:11811
-  export FASTDDS_DEFAULT_PROFILES_FILE=/path/to/fastdds.xml
-  export CYCLONEDDS_URI=file:///path/to/cyclonedds.xml
-VPN/routed addresses are fine; this script does not assume a specific VPN.
+[ros2_netbench] cross-network stream/${ROLE}
+  ROS_DOMAIN_ID=${ROS_DOMAIN_ID}
+  RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-ros-default}
+  ROS_DISCOVERY_SERVER=${ROS_DISCOVERY_SERVER:-not-set}
+  CYCLONEDDS_URI=${CYCLONEDDS_URI:-not-set}
+
+This is still normal ROS 2 pub/sub over DDS. Across routed networks or
+tailnets, default multicast discovery often does not cross the network
+boundary, so configure your selected RMW explicitly before starting both roles.
 EOF
 
 ARGS=(
-  --mode "${MODE}"
+  --mode stream
   --role "${ROLE}"
   --topic "${TOPIC}"
   --payload-size "${PAYLOAD_SIZE}"
@@ -59,10 +54,4 @@ if [[ -n "${SESSION_ID:-}" ]]; then
   ARGS+=(--session-id "${SESSION_ID}")
 fi
 
-echo "[ros2_netbench] cross-network ${MODE}/${ROLE}: domain=${ROS_DOMAIN_ID} rmw=${RMW_IMPLEMENTATION} discovery=${ROS_DISCOVERY_SERVER:-not-set} timeout=${DISCOVERY_TIMEOUT}s" >&2
-if [[ "${MODE}" == "stream" && "${ROLE}" == "receiver" ]]; then
-  echo "[ros2_netbench] receiver is waiting for the sender; start netbench_run on DEVICE_A before this timeout expires" >&2
-elif [[ "${MODE}" == "stream" && "${ROLE}" == "sender" ]]; then
-  echo "[ros2_netbench] sender is waiting for the receiver subscription through the discovery server" >&2
-fi
 exec ros2 run ros2_netbench run_benchmark "${ARGS[@]}" "$@"

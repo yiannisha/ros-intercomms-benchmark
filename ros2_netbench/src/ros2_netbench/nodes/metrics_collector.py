@@ -12,8 +12,8 @@ def merge_role_summaries(run_dirs: list[str | Path], output: str | Path) -> dict
     """Merge multiple role summaries into one JSON document.
 
     This intentionally does not invent missing peer-side values. It keeps each
-    role summary intact so later analysis can compare sender, receiver, client,
-    and server artifacts from machines with different clocks.
+    role summary intact so later analysis can compare sender and receiver
+    artifacts from machines with different clocks.
     """
 
     merged: dict[str, Any] = {"roles": []}

@@ -2,7 +2,7 @@
 <package format="3">
   <name>ros2_netbench</name>
   <version>0.1.0</version>
-  <description>Python ROS 2 network benchmarking toolkit for inter-device communication.</description>
+  <description>Minimal ROS 2 DDS pub/sub stream benchmark for inter-device communication.</description>
   <maintainer email="maintainer@example.com">ros2_netbench maintainers</maintainer>
   <license>Apache-2.0</license>
 
