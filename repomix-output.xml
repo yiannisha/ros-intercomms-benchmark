@@ -1,0 +1,3664 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+ros2_netbench/
+  resource/
+    ros2_netbench
+  src/
+    ros2_netbench/
+      analysis/
+        __init__.py
+        compare_runs.py
+        summarize_run.py
+      config/
+        best_effort.yaml
+        default.yaml
+        reliable.yaml
+      launch/
+        cross_network_stream.launch.py
+        ping_rtt.launch.py
+        same_lan_stream.launch.py
+        service_bench.launch.py
+      nodes/
+        __init__.py
+        common.py
+        metrics_collector.py
+        ping_client.py
+        ping_server.py
+        service_client.py
+        service_server.py
+        stream_receiver.py
+        stream_sender.py
+        sys_monitor.py
+      utils/
+        __init__.py
+        clocks.py
+        csv_json.py
+        network.py
+        qos.py
+        stats.py
+      __init__.py
+      run_benchmark.py
+  package.xml
+  setup.cfg
+  setup.py
+ros2_netbench_interfaces/
+  msg/
+    BenchmarkPacket.msg
+  srv/
+    BenchmarkService.srv
+  CMakeLists.txt
+  package.xml
+scripts/
+  impair_network.sh
+  run_cross_network.sh
+  run_same_lan.sh
+  sync_clock_check.sh
+tests/
+  integration/
+    test_loopback_stream.py
+  unit/
+    test_stats.py
+.gitignore
+pyproject.toml
+README.md
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="ros2_netbench/resource/ros2_netbench">
+
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/analysis/__init__.py">
+"""Post-run analysis helpers."""
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/analysis/compare_runs.py">
+"""Generate a simple markdown comparison table for benchmark runs."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from ros2_netbench.analysis.summarize_run import summarize
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run_dirs", nargs="+")
+    parser.add_argument("--output", default=None)
+    args = parser.parse_args(argv)
+
+    rows = [summarize(Path(run_dir)) for run_dir in args.run_dirs]
+    lines = [
+        "| run | mode | role | sent | received | loss rate | timeouts | rtt p95 ms | one-way p95 ms | msg/s |",
+        "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for row in rows:
+        lines.append(
+            "| {run_dir} | {mode} | {role} | {sent} | {received} | {loss_rate} | "
+            "{timeout_count} | {rtt_p95_ms} | {one_way_p95_ms} | {throughput_mps} |".format(
+                **row
+            )
+        )
+    output = "\n".join(lines) + "\n"
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+    else:
+        print(output, end="")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/analysis/summarize_run.py">
+"""Print a compact summary for one or more result directories."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from typing import Any
+
+from ros2_netbench.utils.csv_json import read_json
+
+
+def summarize(path: Path) -> dict[str, Any]:
+    summary = read_json(path / "summary.json")
+    return {
+        "run_dir": str(path),
+        "mode": summary.get("mode"),
+        "role": summary.get("role"),
+        "sent": summary.get("sent_messages"),
+        "received": summary.get("received_messages"),
+        "loss_rate": summary.get("application_level_loss_rate"),
+        "timeout_count": summary.get("timeout_count"),
+        "rtt_p95_ms": (summary.get("RTT") or {}).get("p95"),
+        "one_way_p95_ms": (summary.get("one_way_latency") or {}).get("p95"),
+        "throughput_mps": summary.get("throughput_messages_per_sec"),
+        "throughput_Bps": summary.get("throughput_bytes_per_sec"),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("run_dirs", nargs="+")
+    args = parser.parse_args(argv)
+    for run_dir in args.run_dirs:
+        item = summarize(Path(run_dir))
+        print(
+            "{run_dir}: mode={mode} role={role} sent={sent} received={received} "
+            "loss_rate={loss_rate} timeouts={timeout_count} rtt_p95_ms={rtt_p95_ms} "
+            "one_way_p95_ms={one_way_p95_ms} throughput_mps={throughput_mps}".format(**item)
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/config/best_effort.yaml">
+qos:
+  reliability: best_effort
+  history: keep_last
+  depth: 10
+  durability: volatile
+  deadline_ms:
+  liveliness: system_default
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/config/default.yaml">
+benchmark:
+  payload_size: 1024
+  rate_hz: 10.0
+  duration: 10.0
+  warmup: 2.0
+  topic: /netbench/stream
+  echo_topic: /netbench/pong
+  service: /netbench/service
+qos:
+  reliability: reliable
+  history: keep_last
+  depth: 10
+  durability: volatile
+  deadline_ms:
+  liveliness: system_default
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/config/reliable.yaml">
+qos:
+  reliability: reliable
+  history: keep_last
+  depth: 50
+  durability: volatile
+  deadline_ms:
+  liveliness: system_default
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/launch/cross_network_stream.launch.py">
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    args = [
+        DeclareLaunchArgument("role", default_value="receiver"),
+        DeclareLaunchArgument("payload_size", default_value="1024"),
+        DeclareLaunchArgument("rate_hz", default_value="10"),
+        DeclareLaunchArgument("duration", default_value="10"),
+        DeclareLaunchArgument("warmup", default_value="2"),
+        DeclareLaunchArgument("topic", default_value="/netbench/stream"),
+        DeclareLaunchArgument("output_dir", default_value="results"),
+        DeclareLaunchArgument("reliability", default_value="reliable"),
+        DeclareLaunchArgument("depth", default_value="10"),
+        DeclareLaunchArgument("discovery_timeout", default_value="30"),
+    ]
+    cli = [
+        "--mode",
+        "stream",
+        "--role",
+        LaunchConfiguration("role"),
+        "--payload-size",
+        LaunchConfiguration("payload_size"),
+        "--rate-hz",
+        LaunchConfiguration("rate_hz"),
+        "--duration",
+        LaunchConfiguration("duration"),
+        "--warmup",
+        LaunchConfiguration("warmup"),
+        "--topic",
+        LaunchConfiguration("topic"),
+        "--output-dir",
+        LaunchConfiguration("output_dir"),
+        "--reliability",
+        LaunchConfiguration("reliability"),
+        "--depth",
+        LaunchConfiguration("depth"),
+        "--discovery-timeout",
+        LaunchConfiguration("discovery_timeout"),
+    ]
+    return LaunchDescription(
+        [
+            *args,
+            Node(package="ros2_netbench", executable="run_benchmark", output="screen", arguments=cli),
+        ]
+    )
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/launch/ping_rtt.launch.py">
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    args = [
+        DeclareLaunchArgument("role", default_value="server"),
+        DeclareLaunchArgument("payload_size", default_value="1024"),
+        DeclareLaunchArgument("rate_hz", default_value="10"),
+        DeclareLaunchArgument("duration", default_value="10"),
+        DeclareLaunchArgument("warmup", default_value="2"),
+        DeclareLaunchArgument("topic", default_value="/netbench/ping"),
+        DeclareLaunchArgument("echo_topic", default_value="/netbench/pong"),
+        DeclareLaunchArgument("output_dir", default_value="results"),
+        DeclareLaunchArgument("reliability", default_value="reliable"),
+        DeclareLaunchArgument("depth", default_value="10"),
+    ]
+    cli = [
+        "--mode",
+        "ping",
+        "--role",
+        LaunchConfiguration("role"),
+        "--payload-size",
+        LaunchConfiguration("payload_size"),
+        "--rate-hz",
+        LaunchConfiguration("rate_hz"),
+        "--duration",
+        LaunchConfiguration("duration"),
+        "--warmup",
+        LaunchConfiguration("warmup"),
+        "--topic",
+        LaunchConfiguration("topic"),
+        "--echo-topic",
+        LaunchConfiguration("echo_topic"),
+        "--output-dir",
+        LaunchConfiguration("output_dir"),
+        "--reliability",
+        LaunchConfiguration("reliability"),
+        "--depth",
+        LaunchConfiguration("depth"),
+    ]
+    return LaunchDescription(
+        [
+            *args,
+            Node(package="ros2_netbench", executable="run_benchmark", output="screen", arguments=cli),
+        ]
+    )
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/launch/same_lan_stream.launch.py">
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    args = [
+        DeclareLaunchArgument("role", default_value="receiver"),
+        DeclareLaunchArgument("payload_size", default_value="1024"),
+        DeclareLaunchArgument("rate_hz", default_value="10"),
+        DeclareLaunchArgument("duration", default_value="10"),
+        DeclareLaunchArgument("warmup", default_value="2"),
+        DeclareLaunchArgument("topic", default_value="/netbench/stream"),
+        DeclareLaunchArgument("output_dir", default_value="results"),
+        DeclareLaunchArgument("reliability", default_value="reliable"),
+        DeclareLaunchArgument("depth", default_value="10"),
+    ]
+    cli = [
+        "--mode",
+        "stream",
+        "--role",
+        LaunchConfiguration("role"),
+        "--payload-size",
+        LaunchConfiguration("payload_size"),
+        "--rate-hz",
+        LaunchConfiguration("rate_hz"),
+        "--duration",
+        LaunchConfiguration("duration"),
+        "--warmup",
+        LaunchConfiguration("warmup"),
+        "--topic",
+        LaunchConfiguration("topic"),
+        "--output-dir",
+        LaunchConfiguration("output_dir"),
+        "--reliability",
+        LaunchConfiguration("reliability"),
+        "--depth",
+        LaunchConfiguration("depth"),
+    ]
+    return LaunchDescription(
+        [
+            *args,
+            Node(package="ros2_netbench", executable="run_benchmark", output="screen", arguments=cli),
+        ]
+    )
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/launch/service_bench.launch.py">
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+
+
+def generate_launch_description():
+    args = [
+        DeclareLaunchArgument("role", default_value="server"),
+        DeclareLaunchArgument("payload_size", default_value="1024"),
+        DeclareLaunchArgument("rate_hz", default_value="10"),
+        DeclareLaunchArgument("duration", default_value="10"),
+        DeclareLaunchArgument("warmup", default_value="2"),
+        DeclareLaunchArgument("service", default_value="/netbench/service"),
+        DeclareLaunchArgument("output_dir", default_value="results"),
+        DeclareLaunchArgument("reliability", default_value="reliable"),
+        DeclareLaunchArgument("depth", default_value="10"),
+    ]
+    cli = [
+        "--mode",
+        "service",
+        "--role",
+        LaunchConfiguration("role"),
+        "--payload-size",
+        LaunchConfiguration("payload_size"),
+        "--rate-hz",
+        LaunchConfiguration("rate_hz"),
+        "--duration",
+        LaunchConfiguration("duration"),
+        "--warmup",
+        LaunchConfiguration("warmup"),
+        "--service",
+        LaunchConfiguration("service"),
+        "--output-dir",
+        LaunchConfiguration("output_dir"),
+        "--reliability",
+        LaunchConfiguration("reliability"),
+        "--depth",
+        LaunchConfiguration("depth"),
+    ]
+    return LaunchDescription(
+        [
+            *args,
+            Node(package="ros2_netbench", executable="run_benchmark", output="screen", arguments=cli),
+        ]
+    )
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/__init__.py">
+"""Benchmark executable nodes."""
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/common.py">
+"""Shared node configuration and artifact helpers."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import asdict, dataclass
+import os
+from pathlib import Path
+import secrets
+import signal
+from typing import Any
+
+from ros2_netbench import __version__
+from ros2_netbench.utils.clocks import iso_utc_from_wall_ns, wall_ns
+from ros2_netbench.utils.csv_json import ensure_dir, write_csv, write_json
+from ros2_netbench.utils.network import ManagedProcess, command_available
+from ros2_netbench.utils.qos import QosConfig, add_qos_arguments, qos_config_from_args
+
+
+DISCOVERY_ENV_KEYS = (
+    "ROS_DOMAIN_ID",
+    "RMW_IMPLEMENTATION",
+    "ROS_DISCOVERY_SERVER",
+    "FASTRTPS_DEFAULT_PROFILES_FILE",
+    "FASTDDS_DEFAULT_PROFILES_FILE",
+    "CYCLONEDDS_URI",
+)
+
+
+@dataclass(slots=True)
+class RunConfig:
+    mode: str
+    role: str
+    run_id: str
+    output_dir: Path
+    payload_size: int
+    rate_hz: float
+    duration_s: float
+    warmup_s: float
+    session_id: int
+    domain_id: int | None
+    topic: str
+    echo_topic: str
+    service: str
+    qos: QosConfig
+    clock_sync: str
+    max_clock_offset_ms: float
+    clock_offset_ms: float | None
+    sample_system: bool
+    nic: str | None
+    bag: bool
+    trace: bool
+    request_timeout_s: float
+    discovery_timeout_s: float
+
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "tool": "ros2_netbench",
+            "version": __version__,
+            "mode": self.mode,
+            "role": self.role,
+            "run_id": self.run_id,
+            "created_at": iso_utc_from_wall_ns(),
+            "payload_size": self.payload_size,
+            "rate_hz": self.rate_hz,
+            "duration_s": self.duration_s,
+            "warmup_s": self.warmup_s,
+            "session_id": self.session_id,
+            "domain_id": self.domain_id,
+            "topic": self.topic,
+            "echo_topic": self.echo_topic,
+            "service": self.service,
+            "qos": self.qos.as_dict(),
+            "clock_sync": {
+                "mode": self.clock_sync,
+                "max_clock_offset_ms": self.max_clock_offset_ms,
+                "clock_offset_ms": self.clock_offset_ms,
+            },
+            "sample_system": self.sample_system,
+            "nic": self.nic,
+            "bag": self.bag,
+            "trace": self.trace,
+            "request_timeout_s": self.request_timeout_s,
+            "discovery_timeout_s": self.discovery_timeout_s,
+            "environment": {
+                key: os.environ.get(key)
+                for key in DISCOVERY_ENV_KEYS
+                if os.environ.get(key) is not None
+            },
+        }
+
+
+class ShutdownFlag:
+    def __init__(self) -> None:
+        self.requested = False
+
+    def install(self) -> None:
+        def _handle(_signum: int, _frame: Any) -> None:
+            self.requested = True
+
+        signal.signal(signal.SIGINT, _handle)
+        signal.signal(signal.SIGTERM, _handle)
+
+
+class ArtifactManager:
+    def __init__(self, config: RunConfig, record_topics: list[str] | None = None) -> None:
+        self.config = config
+        self.record_topics = record_topics or []
+        self.run_dir = ensure_dir(config.output_dir / config.run_id)
+        self._bag_process: ManagedProcess | None = None
+        self._trace_process: ManagedProcess | None = None
+
+    def write_metadata(self) -> None:
+        write_json(self.run_dir / "run_metadata.json", self.config.metadata())
+
+    def start_optional_recorders(self) -> None:
+        if self.config.bag:
+            if not command_available("ros2"):
+                raise RuntimeError("--bag requested but 'ros2' command is not available")
+            bag_dir = self.run_dir / "rosbag"
+            if self.record_topics:
+                argv = ["ros2", "bag", "record", "-o", str(bag_dir), *self.record_topics]
+            else:
+                argv = ["ros2", "bag", "record", "-a", "-o", str(bag_dir)]
+            self._bag_process = ManagedProcess(argv)
+            self._bag_process.start()
+        if self.config.trace:
+            if not command_available("ros2"):
+                raise RuntimeError("--trace requested but 'ros2' command is not available")
+            trace_dir = self.run_dir / "trace"
+            argv = ["ros2", "trace", "-s", str(trace_dir)]
+            self._trace_process = ManagedProcess(argv)
+            self._trace_process.start()
+
+    def stop_optional_recorders(self) -> None:
+        if self._bag_process is not None:
+            self._bag_process.stop()
+        if self._trace_process is not None:
+            self._trace_process.stop()
+
+    def write_summary(self, summary: dict[str, Any]) -> None:
+        write_json(self.run_dir / "summary.json", summary)
+
+    def write_raw_samples(self, rows: list[dict[str, Any]]) -> None:
+        fields = [
+            "timestamp",
+            "seq",
+            "send_time_ns",
+            "receive_time_ns",
+            "local_receive_monotonic_ns",
+            "rtt_ns",
+            "payload_size",
+            "reordered",
+            "duplicate",
+            "lost_gap_detected",
+            "gap_size",
+            "timeout",
+        ]
+        write_csv(self.run_dir / "raw_samples.csv", fields, rows)
+
+    def write_system_samples(self, rows: list[dict[str, Any]]) -> None:
+        if not rows:
+            return
+        write_csv(
+            self.run_dir / "system_stats.csv",
+            ["timestamp", "monotonic_ns", "cpu_percent", "memory_mb", "nic_tx_bps", "nic_rx_bps"],
+            rows,
+        )
+
+
+def new_run_id(mode: str, role: str) -> str:
+    stamp = iso_utc_from_wall_ns(wall_ns()).replace(":", "").replace("+0000", "Z")
+    suffix = secrets.token_hex(3)
+    return f"{stamp}_{mode}_{role}_{suffix}"
+
+
+def add_common_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--mode", choices=["stream", "ping", "service"], required=True)
+    parser.add_argument(
+        "--role",
+        choices=["sender", "receiver", "client", "server"],
+        required=True,
+        help="stream uses sender/receiver; ping and service use client/server",
+    )
+    parser.add_argument("--payload-size", type=int, default=1024)
+    parser.add_argument("--rate-hz", type=float, default=10.0)
+    parser.add_argument("--duration", type=float, default=10.0)
+    parser.add_argument("--warmup", type=float, default=2.0)
+    parser.add_argument("--session-id", type=int, default=None)
+    parser.add_argument("--domain-id", type=int, default=None)
+    parser.add_argument("--topic", default="/netbench/stream")
+    parser.add_argument("--echo-topic", default="/netbench/pong")
+    parser.add_argument("--service", default="/netbench/service")
+    parser.add_argument("--output-dir", default="results")
+    parser.add_argument("--run-id", default=None)
+    parser.add_argument(
+        "--clock-sync",
+        choices=["unknown", "ok", "offset"],
+        default="unknown",
+        help="Controls whether one-way latency is reported as valid.",
+    )
+    parser.add_argument("--max-clock-offset-ms", type=float, default=1.0)
+    parser.add_argument("--clock-offset-ms", type=float, default=None)
+    parser.add_argument("--sample-system", action="store_true")
+    parser.add_argument("--nic", default=None, help="Linux network interface to sample, e.g. eth0")
+    parser.add_argument("--bag", action="store_true", help="Record benchmark topics with rosbag2")
+    parser.add_argument("--trace", action="store_true", help="Start ros2 tracing if installed")
+    parser.add_argument("--request-timeout", type=float, default=1.0)
+    parser.add_argument("--discovery-timeout", type=float, default=10.0)
+    add_qos_arguments(parser)
+
+
+def config_from_args(args: argparse.Namespace) -> RunConfig:
+    if args.payload_size < 0:
+        raise ValueError("--payload-size must be >= 0")
+    if args.payload_size > 4_294_967_295:
+        raise ValueError("--payload-size must fit uint32")
+    if args.rate_hz <= 0:
+        raise ValueError("--rate-hz must be > 0")
+    if args.duration <= 0:
+        raise ValueError("--duration must be > 0")
+    if args.warmup < 0:
+        raise ValueError("--warmup must be >= 0")
+    if args.request_timeout <= 0:
+        raise ValueError("--request-timeout must be > 0")
+    if args.discovery_timeout <= 0:
+        raise ValueError("--discovery-timeout must be > 0")
+    if args.clock_sync == "offset" and args.clock_offset_ms is None:
+        raise ValueError("--clock-sync offset requires --clock-offset-ms")
+    if args.mode == "stream" and args.role not in {"sender", "receiver"}:
+        raise ValueError("stream mode requires role sender or receiver")
+    if args.mode in {"ping", "service"} and args.role not in {"client", "server"}:
+        raise ValueError(f"{args.mode} mode requires role client or server")
+
+    session_id = args.session_id
+    if session_id is None:
+        session_id = 0 if args.role in {"receiver", "server"} else secrets.randbits(63)
+    run_id = args.run_id or new_run_id(args.mode, args.role)
+    return RunConfig(
+        mode=args.mode,
+        role=args.role,
+        run_id=run_id,
+        output_dir=Path(args.output_dir),
+        payload_size=args.payload_size,
+        rate_hz=args.rate_hz,
+        duration_s=args.duration,
+        warmup_s=args.warmup,
+        session_id=session_id,
+        domain_id=args.domain_id,
+        topic=args.topic,
+        echo_topic=args.echo_topic,
+        service=args.service,
+        qos=qos_config_from_args(args),
+        clock_sync=args.clock_sync,
+        max_clock_offset_ms=args.max_clock_offset_ms,
+        clock_offset_ms=args.clock_offset_ms,
+        sample_system=args.sample_system,
+        nic=args.nic,
+        bag=args.bag,
+        trace=args.trace,
+        request_timeout_s=args.request_timeout,
+        discovery_timeout_s=args.discovery_timeout,
+    )
+
+
+def one_way_latency_valid(config: RunConfig) -> tuple[bool, str]:
+    if config.clock_sync == "ok":
+        return True, "operator_marked_clock_sync_ok"
+    if config.clock_sync == "offset":
+        assert config.clock_offset_ms is not None
+        if abs(config.clock_offset_ms) <= config.max_clock_offset_ms:
+            return True, "clock_offset_within_threshold"
+        return False, "clock_offset_exceeds_threshold"
+    return False, "clock_sync_unknown"
+
+
+def base_summary(config: RunConfig, started_wall: str, ended_wall: str) -> dict[str, Any]:
+    return {
+        "mode": config.mode,
+        "role": config.role,
+        "run_id": config.run_id,
+        "session_id": config.session_id,
+        "experiment_start_timestamp": started_wall,
+        "experiment_end_timestamp": ended_wall,
+        "payload_size": config.payload_size,
+        "rate_hz": config.rate_hz,
+        "duration_s": config.duration_s,
+        "warmup_s": config.warmup_s,
+        "qos": config.qos.as_dict(),
+        "discovery_time_ms": None,
+        "connection_ready_time_ms": None,
+        "sender_cpu_percent": None,
+        "receiver_cpu_percent": None,
+        "sender_memory_mb": None,
+        "receiver_memory_mb": None,
+        "sender_nic_tx_bps": None,
+        "receiver_nic_rx_bps": None,
+        "sender_nic_rx_bps": None,
+        "receiver_nic_tx_bps": None,
+    }
+
+
+def empty_latency_summary(valid: bool = False, reason: str = "unavailable") -> dict[str, Any]:
+    return {
+        "valid": valid,
+        "reason": reason,
+        "count": 0,
+        "min": None,
+        "mean": None,
+        "std": None,
+        "p50": None,
+        "p90": None,
+        "p95": None,
+        "p99": None,
+        "max": None,
+    }
+
+
+def timer_period(rate_hz: float) -> float:
+    return 1.0 / rate_hz
+
+
+def packet_payload(size: int) -> bytes:
+    return bytes(size)
+
+
+def dataclass_dict(value: Any) -> dict[str, Any]:
+    return asdict(value)
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/metrics_collector.py">
+"""Helpers for combining role-local result artifacts."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from ros2_netbench.utils.csv_json import read_json, write_json
+
+
+def merge_role_summaries(run_dirs: list[str | Path], output: str | Path) -> dict[str, Any]:
+    """Merge multiple role summaries into one JSON document.
+
+    This intentionally does not invent missing peer-side values. It keeps each
+    role summary intact so later analysis can compare sender, receiver, client,
+    and server artifacts from machines with different clocks.
+    """
+
+    merged: dict[str, Any] = {"roles": []}
+    for run_dir in run_dirs:
+        path = Path(run_dir)
+        summary_path = path / "summary.json"
+        metadata_path = path / "run_metadata.json"
+        merged["roles"].append(
+            {
+                "run_dir": str(path),
+                "metadata": read_json(metadata_path) if metadata_path.exists() else None,
+                "summary": read_json(summary_path) if summary_path.exists() else None,
+            }
+        )
+    write_json(output, merged)
+    return merged
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/ping_client.py">
+"""Ping/pong RTT benchmark client."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.msg import BenchmarkPacket
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+    empty_latency_summary,
+    packet_payload,
+    timer_period,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import (
+    SequenceTracker,
+    jitter_ms_from_timestamps,
+    ns_latency_summary,
+    rate,
+    safe_ratio,
+)
+
+
+@dataclass(slots=True)
+class PendingPing:
+    seq: int
+    sent_monotonic_ns: int
+    sent_wall_ns: int
+    warmup: bool
+    timed_out: bool = False
+
+
+class PingClient(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_ping_client")
+        self.config = config
+        qos = qos_profile(config.qos)
+        self.publisher = self.create_publisher(BenchmarkPacket, config.topic, qos)
+        self.subscription = self.create_subscription(BenchmarkPacket, config.echo_topic, self._on_pong, qos)
+        self.payload = packet_payload(config.payload_size)
+        self.timer = None
+        self.started_mono_ns: int | None = None
+        self.measure_start_ns: int | None = None
+        self.measure_end_ns: int | None = None
+        self.finished = False
+        self.seq = 0
+        self.sent_measurement = 0
+        self.pending: dict[int, PendingPing] = {}
+        self.tracker = SequenceTracker(expected_start_seq=None)
+        self.rows: list[dict[str, Any]] = []
+        self.rtt_ns: list[int] = []
+        self.send_monotonic_ns: list[int] = []
+        self.reply_monotonic_ns: list[int] = []
+        self.timeout_count = 0
+
+    def start(self) -> None:
+        now = monotonic_ns()
+        self.started_mono_ns = now
+        self.measure_start_ns = now + int(self.config.warmup_s * 1_000_000_000)
+        self.measure_end_ns = self.measure_start_ns + int(self.config.duration_s * 1_000_000_000)
+        self.timer = self.create_timer(timer_period(self.config.rate_hz), self._on_timer)
+
+    def _on_timer(self) -> None:
+        if self.finished:
+            return
+        now = monotonic_ns()
+        assert self.measure_start_ns is not None
+        assert self.measure_end_ns is not None
+        self._check_timeouts(now)
+        if now < self.measure_end_ns:
+            warmup = now < self.measure_start_ns
+            seq = self.seq
+            self.seq += 1
+            if not warmup:
+                self.sent_measurement += 1
+                self.send_monotonic_ns.append(now)
+            send_wall = wall_ns()
+            packet = BenchmarkPacket()
+            packet.seq = seq
+            packet.sender_monotonic_ns = now
+            packet.sender_wall_ns = send_wall
+            packet.session_id = self.config.session_id
+            packet.payload_size = self.config.payload_size
+            packet.payload = self.payload
+            self.pending[seq] = PendingPing(seq, now, send_wall, warmup=warmup)
+            self.publisher.publish(packet)
+        elif now > self.measure_end_ns + int(self.config.request_timeout_s * 1_000_000_000):
+            self.finished = True
+            if self.timer is not None:
+                self.timer.cancel()
+
+    def _check_timeouts(self, now: int) -> None:
+        timeout_ns = int(self.config.request_timeout_s * 1_000_000_000)
+        for pending in list(self.pending.values()):
+            if pending.warmup or pending.timed_out:
+                continue
+            if now - pending.sent_monotonic_ns >= timeout_ns:
+                pending.timed_out = True
+                self.timeout_count += 1
+                self.rows.append(
+                    {
+                        "timestamp": iso_utc_from_wall_ns(),
+                        "seq": pending.seq,
+                        "send_time_ns": pending.sent_wall_ns,
+                        "receive_time_ns": None,
+                        "local_receive_monotonic_ns": None,
+                        "rtt_ns": None,
+                        "payload_size": self.config.payload_size,
+                        "reordered": False,
+                        "duplicate": False,
+                        "lost_gap_detected": False,
+                        "gap_size": 0,
+                        "timeout": True,
+                    }
+                )
+
+    def _on_pong(self, packet: BenchmarkPacket) -> None:
+        if packet.session_id != self.config.session_id:
+            return
+        now = monotonic_ns()
+        pending = self.pending.get(packet.seq)
+        if pending is None or pending.warmup:
+            return
+        receive_wall = wall_ns()
+        event = self.tracker.observe(packet.seq)
+        rtt = now - pending.sent_monotonic_ns
+        self.rtt_ns.append(rtt)
+        self.reply_monotonic_ns.append(now)
+        self.rows.append(
+            {
+                "timestamp": iso_utc_from_wall_ns(receive_wall),
+                "seq": packet.seq,
+                "send_time_ns": pending.sent_wall_ns,
+                "receive_time_ns": receive_wall,
+                "local_receive_monotonic_ns": now,
+                "rtt_ns": rtt,
+                "payload_size": packet.payload_size,
+                "reordered": event.out_of_order,
+                "duplicate": event.duplicate,
+                "lost_gap_detected": event.lost_gap_detected,
+                "gap_size": event.gap_size,
+                "timeout": False,
+            }
+        )
+
+    def wait_for_server(self, timeout_s: float, stop: ShutdownFlag) -> float | None:
+        start = monotonic_ns()
+        while rclpy.ok() and not stop.requested:
+            has_sub = self.count_subscribers(self.config.topic) > 0
+            has_pub = self.count_publishers(self.config.echo_topic) > 0
+            if has_sub and has_pub:
+                return (monotonic_ns() - start) / NS_PER_MS
+            if (monotonic_ns() - start) / 1_000_000_000 > timeout_s:
+                return None
+            rclpy.spin_once(self, timeout_sec=0.05)
+        return None
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = PingClient(config)
+    artifacts = ArtifactManager(config, record_topics=[config.topic, config.echo_topic])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        discovery_time_ms = node.wait_for_server(config.discovery_timeout_s, stop)
+        node.start()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        received = node.tracker.unique_received_count
+        loss_count = max(0, node.sent_measurement - received)
+        rtt = ns_latency_summary(node.rtt_ns)
+        rtt["valid"] = bool(node.rtt_ns)
+        rtt["reason"] = "ok" if node.rtt_ns else "no_rtt_samples"
+        summary.update(
+            {
+                "sent_messages": node.sent_measurement,
+                "received_messages": len([row for row in node.rows if not row["timeout"]]),
+                "unique_received_messages": received,
+                "application_level_loss_count": loss_count,
+                "application_level_loss_rate": safe_ratio(loss_count, node.sent_measurement),
+                "duplicate_count": node.tracker.duplicate_count,
+                "out_of_order_count": node.tracker.out_of_order_count,
+                "throughput_messages_per_sec": rate(received, config.duration_s),
+                "throughput_bytes_per_sec": rate(received * config.payload_size, config.duration_s),
+                "achieved_request_rate": rate(node.sent_measurement, config.duration_s),
+                "RTT": rtt,
+                "one_way_latency": empty_latency_summary(False, "not_applicable_for_ping"),
+                "inter_arrival_jitter_ms": jitter_ms_from_timestamps(node.reply_monotonic_ns),
+                "publish_period_jitter_ms": jitter_ms_from_timestamps(node.send_monotonic_ns),
+                "receiver_gap_events": node.tracker.receiver_gap_events,
+                "timeout_count": node.timeout_count,
+                "timeout_rate": safe_ratio(node.timeout_count, node.sent_measurement),
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": discovery_time_ms,
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("sender"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "ping", "--role", "client", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/ping_server.py">
+"""Ping/pong RTT benchmark server."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.msg import BenchmarkPacket
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import rate
+
+
+class PingServer(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_ping_server")
+        self.config = config
+        qos = qos_profile(config.qos)
+        self.publisher = self.create_publisher(BenchmarkPacket, config.echo_topic, qos)
+        self.subscription = self.create_subscription(BenchmarkPacket, config.topic, self._on_ping, qos)
+        self.active_session_id: int | None = None if config.session_id == 0 else config.session_id
+        self.first_packet_mono_ns: int | None = None
+        self.end_ns: int | None = None
+        self.finished = False
+        self.received = 0
+        self.replied = 0
+        self.rows: list[dict[str, Any]] = []
+
+    def _on_ping(self, packet: BenchmarkPacket) -> None:
+        now = monotonic_ns()
+        if self.active_session_id is None:
+            self.active_session_id = packet.session_id
+        if packet.session_id != self.active_session_id:
+            return
+        if self.first_packet_mono_ns is None:
+            self.first_packet_mono_ns = now
+            total = self.config.warmup_s + self.config.duration_s + self.config.request_timeout_s
+            self.end_ns = now + int(total * 1_000_000_000)
+        self.received += 1
+        self.publisher.publish(packet)
+        self.replied += 1
+        receive_wall_ns = wall_ns()
+        self.rows.append(
+            {
+                "timestamp": iso_utc_from_wall_ns(receive_wall_ns),
+                "seq": packet.seq,
+                "send_time_ns": packet.sender_wall_ns,
+                "receive_time_ns": receive_wall_ns,
+                "local_receive_monotonic_ns": now,
+                "rtt_ns": None,
+                "payload_size": packet.payload_size,
+                "reordered": False,
+                "duplicate": False,
+                "lost_gap_detected": False,
+                "gap_size": 0,
+                "timeout": False,
+            }
+        )
+
+    def maybe_finish_after_deadline(self) -> None:
+        if self.end_ns is not None and monotonic_ns() > self.end_ns:
+            self.finished = True
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = PingServer(config)
+    artifacts = ArtifactManager(config, record_topics=[config.topic, config.echo_topic])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_start_ns = monotonic_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if discovery_time_ms is None and node.count_publishers(config.topic) > 0:
+                discovery_time_ms = (monotonic_ns() - discovery_start_ns) / NS_PER_MS
+            if node.first_packet_mono_ns is None:
+                elapsed_s = (monotonic_ns() - discovery_start_ns) / 1_000_000_000
+                if elapsed_s > config.discovery_timeout_s:
+                    break
+            node.maybe_finish_after_deadline()
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        summary.update(
+            {
+                "active_session_id": node.active_session_id,
+                "sent_messages": node.replied,
+                "received_messages": node.received,
+                "application_level_loss_count": 0,
+                "application_level_loss_rate": 0.0,
+                "duplicate_count": 0,
+                "out_of_order_count": 0,
+                "throughput_messages_per_sec": rate(node.replied, config.duration_s),
+                "throughput_bytes_per_sec": rate(node.replied * config.payload_size, config.duration_s),
+                "RTT": {"valid": False, "reason": "computed_by_ping_client"},
+                "one_way_latency": {"valid": False, "reason": "not_applicable_for_ping_server"},
+                "inter_arrival_jitter_ms": None,
+                "publish_period_jitter_ms": None,
+                "receiver_gap_events": None,
+                "timeout_count": 0 if node.first_packet_mono_ns is not None else 1,
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": (
+                    (node.first_packet_mono_ns - discovery_start_ns) / NS_PER_MS
+                    if node.first_packet_mono_ns is not None
+                    else None
+                ),
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("receiver"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "ping", "--role", "server", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/service_client.py">
+"""ROS 2 service latency benchmark client."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.msg import BenchmarkPacket
+from ros2_netbench_interfaces.srv import BenchmarkService
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+    empty_latency_summary,
+    packet_payload,
+    timer_period,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import (
+    SequenceTracker,
+    jitter_ms_from_timestamps,
+    ns_latency_summary,
+    rate,
+    safe_ratio,
+)
+
+
+@dataclass(slots=True)
+class PendingRequest:
+    seq: int
+    sent_monotonic_ns: int
+    sent_wall_ns: int
+    warmup: bool
+    timed_out: bool = False
+
+
+class ServiceClient(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_service_client")
+        self.config = config
+        self.client = self.create_client(
+            BenchmarkService,
+            config.service,
+            qos_profile=qos_profile(config.qos),
+        )
+        self.payload = packet_payload(config.payload_size)
+        self.timer = None
+        self.started_mono_ns: int | None = None
+        self.measure_start_ns: int | None = None
+        self.measure_end_ns: int | None = None
+        self.finished = False
+        self.seq = 0
+        self.sent_measurement = 0
+        self.pending: dict[int, PendingRequest] = {}
+        self.tracker = SequenceTracker(expected_start_seq=None)
+        self.rows: list[dict[str, Any]] = []
+        self.rtt_ns: list[int] = []
+        self.send_monotonic_ns: list[int] = []
+        self.reply_monotonic_ns: list[int] = []
+        self.timeout_count = 0
+        self.error_count = 0
+
+    def wait_for_service_ready(self, timeout_s: float) -> float | None:
+        start = monotonic_ns()
+        while rclpy.ok():
+            if self.client.wait_for_service(timeout_sec=0.1):
+                return (monotonic_ns() - start) / NS_PER_MS
+            if (monotonic_ns() - start) / 1_000_000_000 > timeout_s:
+                return None
+        return None
+
+    def start(self) -> None:
+        now = monotonic_ns()
+        self.started_mono_ns = now
+        self.measure_start_ns = now + int(self.config.warmup_s * 1_000_000_000)
+        self.measure_end_ns = self.measure_start_ns + int(self.config.duration_s * 1_000_000_000)
+        self.timer = self.create_timer(timer_period(self.config.rate_hz), self._on_timer)
+
+    def _on_timer(self) -> None:
+        if self.finished:
+            return
+        now = monotonic_ns()
+        assert self.measure_start_ns is not None
+        assert self.measure_end_ns is not None
+        self._check_timeouts(now)
+        if now < self.measure_end_ns:
+            warmup = now < self.measure_start_ns
+            seq = self.seq
+            self.seq += 1
+            if not warmup:
+                self.sent_measurement += 1
+                self.send_monotonic_ns.append(now)
+            send_wall = wall_ns()
+            request = BenchmarkService.Request()
+            request.packet = self._make_packet(seq, now, send_wall)
+            self.pending[seq] = PendingRequest(seq, now, send_wall, warmup=warmup)
+            future = self.client.call_async(request)
+            future.add_done_callback(lambda fut, seq=seq: self._on_response(seq, fut))
+        elif now > self.measure_end_ns + int(self.config.request_timeout_s * 1_000_000_000):
+            self.finished = True
+            if self.timer is not None:
+                self.timer.cancel()
+
+    def _make_packet(self, seq: int, send_mono_ns: int, send_wall_ns: int) -> BenchmarkPacket:
+        packet = BenchmarkPacket()
+        packet.seq = seq
+        packet.sender_monotonic_ns = send_mono_ns
+        packet.sender_wall_ns = send_wall_ns
+        packet.session_id = self.config.session_id
+        packet.payload_size = self.config.payload_size
+        packet.payload = self.payload
+        return packet
+
+    def _check_timeouts(self, now: int) -> None:
+        timeout_ns = int(self.config.request_timeout_s * 1_000_000_000)
+        for pending in list(self.pending.values()):
+            if pending.warmup or pending.timed_out:
+                continue
+            if now - pending.sent_monotonic_ns >= timeout_ns:
+                pending.timed_out = True
+                self.timeout_count += 1
+                self.rows.append(
+                    {
+                        "timestamp": iso_utc_from_wall_ns(),
+                        "seq": pending.seq,
+                        "send_time_ns": pending.sent_wall_ns,
+                        "receive_time_ns": None,
+                        "local_receive_monotonic_ns": None,
+                        "rtt_ns": None,
+                        "payload_size": self.config.payload_size,
+                        "reordered": False,
+                        "duplicate": False,
+                        "lost_gap_detected": False,
+                        "gap_size": 0,
+                        "timeout": True,
+                    }
+                )
+
+    def _on_response(self, seq: int, future: Any) -> None:
+        now = monotonic_ns()
+        pending = self.pending.get(seq)
+        if pending is None or pending.warmup:
+            return
+        try:
+            response = future.result()
+        except Exception:
+            self.error_count += 1
+            return
+        if response is None or not response.ok:
+            self.error_count += 1
+            return
+        receive_wall = wall_ns()
+        event = self.tracker.observe(seq)
+        rtt = now - pending.sent_monotonic_ns
+        self.rtt_ns.append(rtt)
+        self.reply_monotonic_ns.append(now)
+        self.rows.append(
+            {
+                "timestamp": iso_utc_from_wall_ns(receive_wall),
+                "seq": seq,
+                "send_time_ns": pending.sent_wall_ns,
+                "receive_time_ns": receive_wall,
+                "local_receive_monotonic_ns": now,
+                "rtt_ns": rtt,
+                "payload_size": response.packet.payload_size,
+                "reordered": event.out_of_order,
+                "duplicate": event.duplicate,
+                "lost_gap_detected": event.lost_gap_detected,
+                "gap_size": event.gap_size,
+                "timeout": False,
+            }
+        )
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = ServiceClient(config)
+    artifacts = ArtifactManager(config, record_topics=[])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        discovery_time_ms = node.wait_for_service_ready(config.discovery_timeout_s)
+        node.start()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        received = node.tracker.unique_received_count
+        loss_count = max(0, node.sent_measurement - received)
+        rtt = ns_latency_summary(node.rtt_ns)
+        rtt["valid"] = bool(node.rtt_ns)
+        rtt["reason"] = "ok" if node.rtt_ns else "no_service_latency_samples"
+        summary.update(
+            {
+                "sent_messages": node.sent_measurement,
+                "received_messages": len([row for row in node.rows if not row["timeout"]]),
+                "unique_received_messages": received,
+                "application_level_loss_count": loss_count,
+                "application_level_loss_rate": safe_ratio(loss_count, node.sent_measurement),
+                "duplicate_count": node.tracker.duplicate_count,
+                "out_of_order_count": node.tracker.out_of_order_count,
+                "throughput_messages_per_sec": rate(received, config.duration_s),
+                "throughput_bytes_per_sec": rate(received * config.payload_size, config.duration_s),
+                "achieved_request_rate": rate(node.sent_measurement, config.duration_s),
+                "RTT": rtt,
+                "service_latency": rtt,
+                "one_way_latency": empty_latency_summary(False, "not_applicable_for_service"),
+                "inter_arrival_jitter_ms": jitter_ms_from_timestamps(node.reply_monotonic_ns),
+                "publish_period_jitter_ms": jitter_ms_from_timestamps(node.send_monotonic_ns),
+                "receiver_gap_events": node.tracker.receiver_gap_events,
+                "timeout_count": node.timeout_count,
+                "timeout_rate": safe_ratio(node.timeout_count, node.sent_measurement),
+                "error_count": node.error_count,
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": discovery_time_ms,
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("sender"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "service", "--role", "client", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/service_server.py">
+"""ROS 2 service latency benchmark server."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.srv import BenchmarkService
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import rate
+
+
+class ServiceServer(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_service_server")
+        self.config = config
+        self.service = self.create_service(
+            BenchmarkService,
+            config.service,
+            self._on_request,
+            qos_profile=qos_profile(config.qos),
+        )
+        self.active_session_id: int | None = None if config.session_id == 0 else config.session_id
+        self.first_request_mono_ns: int | None = None
+        self.end_ns: int | None = None
+        self.finished = False
+        self.received = 0
+        self.replied = 0
+        self.rows: list[dict[str, Any]] = []
+
+    def _on_request(
+        self,
+        request: BenchmarkService.Request,
+        response: BenchmarkService.Response,
+    ) -> BenchmarkService.Response:
+        packet = request.packet
+        now = monotonic_ns()
+        if self.active_session_id is None:
+            self.active_session_id = packet.session_id
+        if packet.session_id != self.active_session_id:
+            response.ok = False
+            response.error = "session_id_mismatch"
+            return response
+        if self.first_request_mono_ns is None:
+            self.first_request_mono_ns = now
+            total = self.config.warmup_s + self.config.duration_s + self.config.request_timeout_s
+            self.end_ns = now + int(total * 1_000_000_000)
+        self.received += 1
+        response.packet = packet
+        response.ok = True
+        response.error = ""
+        self.replied += 1
+        receive_wall_ns = wall_ns()
+        self.rows.append(
+            {
+                "timestamp": iso_utc_from_wall_ns(receive_wall_ns),
+                "seq": packet.seq,
+                "send_time_ns": packet.sender_wall_ns,
+                "receive_time_ns": receive_wall_ns,
+                "local_receive_monotonic_ns": now,
+                "rtt_ns": None,
+                "payload_size": packet.payload_size,
+                "reordered": False,
+                "duplicate": False,
+                "lost_gap_detected": False,
+                "gap_size": 0,
+                "timeout": False,
+            }
+        )
+        return response
+
+    def maybe_finish_after_deadline(self) -> None:
+        if self.end_ns is not None and monotonic_ns() > self.end_ns:
+            self.finished = True
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = ServiceServer(config)
+    artifacts = ArtifactManager(config, record_topics=[])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_start_ns = monotonic_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if discovery_time_ms is None and node.count_clients(config.service) > 0:
+                discovery_time_ms = (monotonic_ns() - discovery_start_ns) / NS_PER_MS
+            if node.first_request_mono_ns is None:
+                elapsed_s = (monotonic_ns() - discovery_start_ns) / 1_000_000_000
+                if elapsed_s > config.discovery_timeout_s:
+                    break
+            node.maybe_finish_after_deadline()
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        summary.update(
+            {
+                "active_session_id": node.active_session_id,
+                "sent_messages": node.replied,
+                "received_messages": node.received,
+                "application_level_loss_count": 0,
+                "application_level_loss_rate": 0.0,
+                "duplicate_count": 0,
+                "out_of_order_count": 0,
+                "throughput_messages_per_sec": rate(node.replied, config.duration_s),
+                "throughput_bytes_per_sec": rate(node.replied * config.payload_size, config.duration_s),
+                "achieved_request_rate": None,
+                "RTT": {"valid": False, "reason": "computed_by_service_client"},
+                "one_way_latency": {"valid": False, "reason": "not_applicable_for_service_server"},
+                "inter_arrival_jitter_ms": None,
+                "publish_period_jitter_ms": None,
+                "receiver_gap_events": None,
+                "timeout_count": 0 if node.first_request_mono_ns is not None else 1,
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": (
+                    (node.first_request_mono_ns - discovery_start_ns) / NS_PER_MS
+                    if node.first_request_mono_ns is not None
+                    else None
+                ),
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("receiver"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "service", "--role", "server", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/stream_receiver.py">
+"""Pub/sub stream benchmark receiver."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.msg import BenchmarkPacket
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+    empty_latency_summary,
+    one_way_latency_valid,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import (
+    SequenceTracker,
+    jitter_ms_from_timestamps,
+    ns_latency_summary,
+    rate,
+    safe_ratio,
+)
+
+
+class StreamReceiver(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_stream_receiver")
+        self.config = config
+        self.subscription = self.create_subscription(
+            BenchmarkPacket,
+            config.topic,
+            self._on_packet,
+            qos_profile(config.qos),
+        )
+        self.active_session_id: int | None = None if config.session_id == 0 else config.session_id
+        self.first_packet_mono_ns: int | None = None
+        self.measure_start_ns: int | None = None
+        self.measure_end_ns: int | None = None
+        self.finished = False
+        self.tracker = SequenceTracker(expected_start_seq=None)
+        self.rows: list[dict[str, Any]] = []
+        self.receive_monotonic_ns: list[int] = []
+        self.one_way_ns: list[int] = []
+        self.one_way_valid, self.one_way_reason = one_way_latency_valid(config)
+
+    def _on_packet(self, packet: BenchmarkPacket) -> None:
+        now_mono = monotonic_ns()
+        if self.active_session_id is None:
+            self.active_session_id = packet.session_id
+        if packet.session_id != self.active_session_id:
+            return
+
+        if self.first_packet_mono_ns is None:
+            self.first_packet_mono_ns = now_mono
+            self.measure_start_ns = now_mono + int(self.config.warmup_s * 1_000_000_000)
+            self.measure_end_ns = self.measure_start_ns + int(self.config.duration_s * 1_000_000_000)
+
+        assert self.measure_start_ns is not None
+        assert self.measure_end_ns is not None
+        if now_mono < self.measure_start_ns:
+            return
+        if now_mono > self.measure_end_ns:
+            self.finished = True
+            return
+
+        receive_wall_ns = wall_ns()
+        event = self.tracker.observe(packet.seq)
+        if self.one_way_valid:
+            offset_ns = int((self.config.clock_offset_ms or 0.0) * 1_000_000)
+            self.one_way_ns.append(receive_wall_ns - int(packet.sender_wall_ns) - offset_ns)
+        self.receive_monotonic_ns.append(now_mono)
+        self.rows.append(
+            {
+                "timestamp": iso_utc_from_wall_ns(receive_wall_ns),
+                "seq": packet.seq,
+                "send_time_ns": packet.sender_wall_ns,
+                "receive_time_ns": receive_wall_ns,
+                "local_receive_monotonic_ns": now_mono,
+                "rtt_ns": None,
+                "payload_size": packet.payload_size,
+                "reordered": event.out_of_order,
+                "duplicate": event.duplicate,
+                "lost_gap_detected": event.lost_gap_detected,
+                "gap_size": event.gap_size,
+                "timeout": False,
+            }
+        )
+
+    def maybe_finish_after_deadline(self) -> None:
+        if self.measure_end_ns is not None and monotonic_ns() > self.measure_end_ns:
+            self.finished = True
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = StreamReceiver(config)
+    artifacts = ArtifactManager(config, record_topics=[config.topic])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_start_ns = monotonic_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if discovery_time_ms is None and node.count_publishers(config.topic) > 0:
+                discovery_time_ms = (monotonic_ns() - discovery_start_ns) / NS_PER_MS
+            if node.first_packet_mono_ns is None:
+                elapsed_s = (monotonic_ns() - discovery_start_ns) / 1_000_000_000
+                if elapsed_s > config.discovery_timeout_s:
+                    break
+            node.maybe_finish_after_deadline()
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        inferred_sent = node.tracker.inferred_sent_count()
+        received_total = len(node.rows)
+        loss_count = node.tracker.final_loss_count()
+        one_way = empty_latency_summary(valid=False, reason=node.one_way_reason)
+        if node.one_way_valid:
+            one_way = ns_latency_summary(node.one_way_ns)
+            one_way["valid"] = True
+            one_way["reason"] = node.one_way_reason
+        summary.update(
+            {
+                "active_session_id": node.active_session_id,
+                "sent_messages": inferred_sent,
+                "received_messages": received_total,
+                "unique_received_messages": node.tracker.unique_received_count,
+                "application_level_loss_count": loss_count,
+                "application_level_loss_rate": safe_ratio(loss_count, inferred_sent),
+                "duplicate_count": node.tracker.duplicate_count,
+                "out_of_order_count": node.tracker.out_of_order_count,
+                "throughput_messages_per_sec": rate(received_total, config.duration_s),
+                "throughput_bytes_per_sec": rate(received_total * config.payload_size, config.duration_s),
+                "RTT": {"valid": False, "reason": "not_applicable_for_stream_receiver"},
+                "one_way_latency": one_way,
+                "inter_arrival_jitter_ms": jitter_ms_from_timestamps(node.receive_monotonic_ns),
+                "publish_period_jitter_ms": None,
+                "receiver_gap_events": node.tracker.receiver_gap_events,
+                "timeout_count": 0 if node.first_packet_mono_ns is not None else 1,
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": (
+                    (node.first_packet_mono_ns - discovery_start_ns) / NS_PER_MS
+                    if node.first_packet_mono_ns is not None
+                    else None
+                ),
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("receiver"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "stream", "--role", "receiver", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/stream_sender.py">
+"""Pub/sub stream benchmark sender."""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from typing import Any
+
+import rclpy
+from rclpy.node import Node
+
+from ros2_netbench_interfaces.msg import BenchmarkPacket
+
+from ros2_netbench.nodes.common import (
+    ArtifactManager,
+    RunConfig,
+    ShutdownFlag,
+    add_common_arguments,
+    base_summary,
+    config_from_args,
+    packet_payload,
+    timer_period,
+)
+from ros2_netbench.nodes.sys_monitor import SystemMonitor
+from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
+from ros2_netbench.utils.network import apply_domain_id
+from ros2_netbench.utils.qos import qos_profile
+from ros2_netbench.utils.stats import jitter_ms_from_timestamps, rate
+
+
+class StreamSender(Node):
+    def __init__(self, config: RunConfig) -> None:
+        super().__init__("netbench_stream_sender")
+        self.config = config
+        self.publisher = self.create_publisher(
+            BenchmarkPacket,
+            config.topic,
+            qos_profile(config.qos),
+        )
+        self.payload = packet_payload(config.payload_size)
+        self.timer = None
+        self.started_mono_ns: int | None = None
+        self.measure_start_ns: int | None = None
+        self.measure_end_ns: int | None = None
+        self.finished = False
+        self.seq = 0
+        self.sent_rows: list[dict[str, Any]] = []
+        self.send_monotonic_ns: list[int] = []
+
+    def start(self) -> None:
+        now = monotonic_ns()
+        self.started_mono_ns = now
+        self.measure_start_ns = now + int(self.config.warmup_s * 1_000_000_000)
+        self.measure_end_ns = self.measure_start_ns + int(self.config.duration_s * 1_000_000_000)
+        self.timer = self.create_timer(timer_period(self.config.rate_hz), self._on_timer)
+
+    def _on_timer(self) -> None:
+        if self.finished:
+            return
+        now_mono = monotonic_ns()
+        assert self.measure_start_ns is not None
+        assert self.measure_end_ns is not None
+        if now_mono >= self.measure_end_ns:
+            self.finished = True
+            if self.timer is not None:
+                self.timer.cancel()
+            return
+
+        in_measurement = now_mono >= self.measure_start_ns
+        seq = self.seq
+        self.seq += 1
+
+        send_wall_ns = wall_ns()
+        packet = BenchmarkPacket()
+        packet.seq = seq
+        packet.sender_monotonic_ns = now_mono
+        packet.sender_wall_ns = send_wall_ns
+        packet.session_id = self.config.session_id
+        packet.payload_size = self.config.payload_size
+        packet.payload = self.payload
+        self.publisher.publish(packet)
+
+        if in_measurement:
+            self.send_monotonic_ns.append(now_mono)
+            self.sent_rows.append(
+                {
+                    "timestamp": iso_utc_from_wall_ns(send_wall_ns),
+                    "seq": seq,
+                    "send_time_ns": send_wall_ns,
+                    "receive_time_ns": None,
+                    "local_receive_monotonic_ns": None,
+                    "rtt_ns": None,
+                    "payload_size": self.config.payload_size,
+                    "reordered": False,
+                    "duplicate": False,
+                    "lost_gap_detected": False,
+                    "gap_size": 0,
+                    "timeout": False,
+                }
+            )
+
+    def wait_for_subscription(self, timeout_s: float, stop: ShutdownFlag) -> float | None:
+        start = monotonic_ns()
+        while rclpy.ok() and not stop.requested:
+            if self.count_subscribers(self.config.topic) > 0:
+                return (monotonic_ns() - start) / NS_PER_MS
+            if (monotonic_ns() - start) / 1_000_000_000 > timeout_s:
+                return None
+            rclpy.spin_once(self, timeout_sec=0.05)
+        return None
+
+
+def run(config: RunConfig) -> int:
+    apply_domain_id(config.domain_id)
+    rclpy.init()
+    node = StreamSender(config)
+    artifacts = ArtifactManager(config, record_topics=[config.topic])
+    monitor = SystemMonitor(interface=config.nic) if config.sample_system else None
+    stop = ShutdownFlag()
+    stop.install()
+    started_wall = iso_utc_from_wall_ns()
+    discovery_time_ms: float | None = None
+    try:
+        artifacts.write_metadata()
+        artifacts.start_optional_recorders()
+        discovery_time_ms = node.wait_for_subscription(config.discovery_timeout_s, stop)
+        node.start()
+        last_sample = 0
+        while rclpy.ok() and not stop.requested and not node.finished:
+            rclpy.spin_once(node, timeout_sec=0.05)
+            if monitor is not None and monotonic_ns() - last_sample >= 1_000_000_000:
+                monitor.sample()
+                last_sample = monotonic_ns()
+    finally:
+        ended_wall = iso_utc_from_wall_ns()
+        artifacts.stop_optional_recorders()
+        summary = base_summary(config, started_wall, ended_wall)
+        sent = len(node.sent_rows)
+        summary.update(
+            {
+                "sent_messages": sent,
+                "received_messages": None,
+                "application_level_loss_count": None,
+                "application_level_loss_rate": None,
+                "duplicate_count": 0,
+                "out_of_order_count": 0,
+                "throughput_messages_per_sec": rate(sent, config.duration_s),
+                "throughput_bytes_per_sec": rate(sent * config.payload_size, config.duration_s),
+                "RTT": {"valid": False, "reason": "not_applicable_for_stream_sender"},
+                "one_way_latency": {"valid": False, "reason": "computed_by_receiver"},
+                "inter_arrival_jitter_ms": None,
+                "publish_period_jitter_ms": jitter_ms_from_timestamps(node.send_monotonic_ns),
+                "receiver_gap_events": None,
+                "timeout_count": 0,
+                "discovery_time_ms": discovery_time_ms,
+                "connection_ready_time_ms": discovery_time_ms,
+            }
+        )
+        if monitor is not None:
+            summary.update(monitor.summary("sender"))
+            artifacts.write_system_samples(monitor.rows())
+        artifacts.write_raw_samples(node.sent_rows)
+        artifacts.write_summary(summary)
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args_list = list(sys.argv[1:] if argv is None else argv)
+    if "--mode" not in args_list:
+        args_list = ["--mode", "stream", "--role", "sender", *args_list]
+    config = config_from_args(build_parser().parse_args(args_list))
+    return run(config)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/nodes/sys_monitor.py">
+"""Low-overhead Linux process and NIC sampler."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import os
+from pathlib import Path
+import time
+
+from ros2_netbench.utils.clocks import iso_utc_from_wall_ns, monotonic_ns
+from ros2_netbench.utils.stats import summary_stats
+
+
+CLK_TCK = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+PAGE_SIZE = os.sysconf("SC_PAGE_SIZE")
+
+
+@dataclass(slots=True)
+class SystemSample:
+    timestamp: str
+    monotonic_ns: int
+    cpu_percent: float | None
+    memory_mb: float | None
+    nic_tx_bps: float | None
+    nic_rx_bps: float | None
+
+    def as_row(self) -> dict[str, float | int | str | None]:
+        return {
+            "timestamp": self.timestamp,
+            "monotonic_ns": self.monotonic_ns,
+            "cpu_percent": self.cpu_percent,
+            "memory_mb": self.memory_mb,
+            "nic_tx_bps": self.nic_tx_bps,
+            "nic_rx_bps": self.nic_rx_bps,
+        }
+
+
+class SystemMonitor:
+    """Sample current process CPU/RSS and optionally one network interface."""
+
+    def __init__(self, interface: str | None = None, pid: int | None = None) -> None:
+        self.interface = interface
+        self.pid = pid or os.getpid()
+        self.samples: list[SystemSample] = []
+        self._last_process_cpu_s: float | None = None
+        self._last_wall_s: float | None = None
+        self._last_nic: tuple[int, int] | None = None
+
+    def sample(self) -> SystemSample:
+        now_wall = time.monotonic()
+        now_mono_ns = monotonic_ns()
+        proc_cpu_s = self._read_process_cpu_seconds()
+        memory_mb = self._read_process_memory_mb()
+
+        cpu_percent = None
+        if self._last_process_cpu_s is not None and self._last_wall_s is not None:
+            elapsed = now_wall - self._last_wall_s
+            if elapsed > 0:
+                cpu_percent = ((proc_cpu_s - self._last_process_cpu_s) / elapsed) * 100.0
+        self._last_process_cpu_s = proc_cpu_s
+        self._last_wall_s = now_wall
+
+        nic_tx_bps = None
+        nic_rx_bps = None
+        nic = self._read_nic_bytes()
+        if nic is not None and self._last_nic is not None and len(self.samples) > 0:
+            previous_rx, previous_tx = self._last_nic
+            elapsed = (now_mono_ns - self.samples[-1].monotonic_ns) / 1_000_000_000
+            if elapsed > 0:
+                nic_rx_bps = ((nic[0] - previous_rx) * 8.0) / elapsed
+                nic_tx_bps = ((nic[1] - previous_tx) * 8.0) / elapsed
+        if nic is not None:
+            self._last_nic = nic
+
+        sample = SystemSample(
+            timestamp=iso_utc_from_wall_ns(),
+            monotonic_ns=now_mono_ns,
+            cpu_percent=cpu_percent,
+            memory_mb=memory_mb,
+            nic_tx_bps=nic_tx_bps,
+            nic_rx_bps=nic_rx_bps,
+        )
+        self.samples.append(sample)
+        return sample
+
+    def summary(self, prefix: str) -> dict[str, float | None]:
+        cpu_values = [s.cpu_percent for s in self.samples if s.cpu_percent is not None]
+        mem_values = [s.memory_mb for s in self.samples if s.memory_mb is not None]
+        tx_values = [s.nic_tx_bps for s in self.samples if s.nic_tx_bps is not None]
+        rx_values = [s.nic_rx_bps for s in self.samples if s.nic_rx_bps is not None]
+        return {
+            f"{prefix}_cpu_percent": summary_stats(cpu_values)["mean"],
+            f"{prefix}_memory_mb": summary_stats(mem_values)["max"],
+            f"{prefix}_nic_tx_bps": summary_stats(tx_values)["mean"],
+            f"{prefix}_nic_rx_bps": summary_stats(rx_values)["mean"],
+        }
+
+    def rows(self) -> list[dict[str, float | int | str | None]]:
+        return [sample.as_row() for sample in self.samples]
+
+    def _read_process_cpu_seconds(self) -> float:
+        stat = Path(f"/proc/{self.pid}/stat").read_text(encoding="utf-8")
+        right = stat.rsplit(")", maxsplit=1)[1].split()
+        utime = int(right[11])
+        stime = int(right[12])
+        return (utime + stime) / CLK_TCK
+
+    def _read_process_memory_mb(self) -> float | None:
+        try:
+            statm = Path(f"/proc/{self.pid}/statm").read_text(encoding="utf-8").split()
+        except FileNotFoundError:
+            return None
+        if len(statm) < 2:
+            return None
+        rss_pages = int(statm[1])
+        return (rss_pages * PAGE_SIZE) / (1024.0 * 1024.0)
+
+    def _read_nic_bytes(self) -> tuple[int, int] | None:
+        if not self.interface:
+            return None
+        try:
+            lines = Path("/proc/net/dev").read_text(encoding="utf-8").splitlines()
+        except FileNotFoundError:
+            return None
+        prefix = f"{self.interface}:"
+        for line in lines:
+            stripped = line.strip()
+            if not stripped.startswith(prefix):
+                continue
+            parts = stripped.split(":", maxsplit=1)[1].split()
+            if len(parts) < 16:
+                return None
+            rx_bytes = int(parts[0])
+            tx_bytes = int(parts[8])
+            return rx_bytes, tx_bytes
+        return None
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/__init__.py">
+"""Shared benchmark utility modules."""
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/clocks.py">
+"""Clock helpers.
+
+Benchmark interval timing uses monotonic clocks. Wall-clock timestamps are
+recorded only for cross-host one-way latency when the operator has confirmed
+clock synchronization.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+import time
+
+
+NS_PER_MS = 1_000_000
+NS_PER_SEC = 1_000_000_000
+
+
+def monotonic_ns() -> int:
+    """Return a steady monotonic timestamp in nanoseconds."""
+
+    return time.monotonic_ns()
+
+
+def wall_ns() -> int:
+    """Return Unix wall-clock time in nanoseconds."""
+
+    return time.time_ns()
+
+
+def iso_utc_from_wall_ns(value: int | None = None) -> str:
+    """Return an ISO-8601 UTC timestamp for a wall-clock nanosecond value."""
+
+    ns = wall_ns() if value is None else value
+    return datetime.fromtimestamp(ns / NS_PER_SEC, tz=timezone.utc).isoformat()
+
+
+def ns_to_ms(value: int | float | None) -> float | None:
+    """Convert nanoseconds to milliseconds."""
+
+    if value is None:
+        return None
+    return float(value) / NS_PER_MS
+
+
+def monotonic_deadline(duration_s: float) -> int:
+    """Return a monotonic deadline duration seconds from now."""
+
+    return monotonic_ns() + int(duration_s * NS_PER_SEC)
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/csv_json.py">
+"""Small CSV and JSON artifact helpers."""
+
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+from typing import Any, Iterable
+
+
+def ensure_dir(path: str | Path) -> Path:
+    target = Path(path).expanduser().resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def write_json(path: str | Path, data: dict[str, Any]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def read_json(path: str | Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def write_csv(path: str | Path, fieldnames: list[str], rows: Iterable[dict[str, Any]]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames, extrasaction="ignore")
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/network.py">
+"""Network and subprocess helpers."""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+import shutil
+import subprocess
+from typing import Sequence
+
+
+def apply_domain_id(domain_id: int | None) -> None:
+    """Set ROS_DOMAIN_ID before rclpy initialization."""
+
+    if domain_id is not None:
+        if domain_id < 0 or domain_id > 232:
+            raise ValueError("ROS domain id must be in the range 0..232")
+        os.environ["ROS_DOMAIN_ID"] = str(domain_id)
+
+
+def command_available(name: str) -> bool:
+    return shutil.which(name) is not None
+
+
+class ManagedProcess:
+    """A small wrapper for optional helper processes such as rosbag."""
+
+    def __init__(self, argv: Sequence[str], cwd: Path | None = None) -> None:
+        self.argv = list(argv)
+        self.cwd = cwd
+        self.process: subprocess.Popen[str] | None = None
+
+    def start(self) -> None:
+        if self.process is not None:
+            return
+        self.process = subprocess.Popen(
+            self.argv,
+            cwd=str(self.cwd) if self.cwd else None,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+
+    def stop(self, timeout_s: float = 5.0) -> None:
+        if self.process is None:
+            return
+        if self.process.poll() is not None:
+            return
+        self.process.terminate()
+        try:
+            self.process.wait(timeout=timeout_s)
+        except subprocess.TimeoutExpired:
+            self.process.kill()
+            self.process.wait(timeout=timeout_s)
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/qos.py">
+"""QoS parsing for ROS 2 benchmark nodes."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from rclpy.duration import Duration
+from rclpy.qos import (
+    DurabilityPolicy,
+    HistoryPolicy,
+    LivelinessPolicy,
+    QoSProfile,
+    ReliabilityPolicy,
+)
+
+
+@dataclass(slots=True)
+class QosConfig:
+    reliability: str = "reliable"
+    history: str = "keep_last"
+    depth: int = 10
+    durability: str = "volatile"
+    deadline_ms: float | None = None
+    liveliness: str = "system_default"
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "reliability": self.reliability,
+            "history": self.history,
+            "depth": self.depth,
+            "durability": self.durability,
+            "deadline_ms": self.deadline_ms,
+            "liveliness": self.liveliness,
+        }
+
+
+def _choice(value: str, mapping: dict[str, Any], field: str) -> Any:
+    normalized = value.lower()
+    if normalized not in mapping:
+        valid = ", ".join(sorted(mapping))
+        raise ValueError(f"Invalid {field} '{value}'. Expected one of: {valid}")
+    return mapping[normalized]
+
+
+def qos_profile(config: QosConfig) -> QoSProfile:
+    if config.depth < 1:
+        raise ValueError("QoS depth must be >= 1")
+
+    profile = QoSProfile(
+        history=_choice(
+            config.history,
+            {"keep_last": HistoryPolicy.KEEP_LAST},
+            "history",
+        ),
+        depth=config.depth,
+        reliability=_choice(
+            config.reliability,
+            {
+                "reliable": ReliabilityPolicy.RELIABLE,
+                "best_effort": ReliabilityPolicy.BEST_EFFORT,
+            },
+            "reliability",
+        ),
+        durability=_choice(
+            config.durability,
+            {
+                "volatile": DurabilityPolicy.VOLATILE,
+                "transient_local": DurabilityPolicy.TRANSIENT_LOCAL,
+            },
+            "durability",
+        ),
+        liveliness=_choice(
+            config.liveliness,
+            {
+                "system_default": LivelinessPolicy.SYSTEM_DEFAULT,
+                "automatic": LivelinessPolicy.AUTOMATIC,
+                "manual_by_topic": LivelinessPolicy.MANUAL_BY_TOPIC,
+            },
+            "liveliness",
+        ),
+    )
+    if config.deadline_ms is not None:
+        if config.deadline_ms < 0:
+            raise ValueError("deadline_ms must be non-negative")
+        profile.deadline = Duration(seconds=config.deadline_ms / 1000.0)
+    return profile
+
+
+def add_qos_arguments(parser: Any) -> None:
+    parser.add_argument("--reliability", choices=["reliable", "best_effort"], default="reliable")
+    parser.add_argument("--history", choices=["keep_last"], default="keep_last")
+    parser.add_argument("--depth", type=int, default=10)
+    parser.add_argument("--durability", choices=["volatile", "transient_local"], default="volatile")
+    parser.add_argument("--deadline-ms", type=float, default=None)
+    parser.add_argument(
+        "--liveliness",
+        choices=["system_default", "automatic", "manual_by_topic"],
+        default="system_default",
+    )
+
+
+def qos_config_from_args(args: Any) -> QosConfig:
+    return QosConfig(
+        reliability=args.reliability,
+        history=args.history,
+        depth=args.depth,
+        durability=args.durability,
+        deadline_ms=args.deadline_ms,
+        liveliness=args.liveliness,
+    )
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/utils/stats.py">
+"""Statistical helpers and sequence-quality accounting."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import math
+from statistics import fmean
+from typing import Iterable, Sequence
+
+from ros2_netbench.utils.clocks import NS_PER_MS
+
+
+PERCENTILES = (50, 90, 95, 99)
+
+
+def percentile(values: Sequence[float], pct: float) -> float | None:
+    """Return a percentile using linear interpolation.
+
+    The function handles empty and single-sample inputs cleanly and does not
+    mutate the caller's sequence.
+    """
+
+    if not values:
+        return None
+    if len(values) == 1:
+        return float(values[0])
+    if pct <= 0:
+        return float(min(values))
+    if pct >= 100:
+        return float(max(values))
+
+    ordered = sorted(float(v) for v in values)
+    rank = (len(ordered) - 1) * (pct / 100.0)
+    low = math.floor(rank)
+    high = math.ceil(rank)
+    if low == high:
+        return ordered[int(rank)]
+    weight = rank - low
+    return ordered[low] * (1.0 - weight) + ordered[high] * weight
+
+
+def sample_stddev(values: Sequence[float]) -> float | None:
+    """Return sample standard deviation, or 0 for one sample."""
+
+    if not values:
+        return None
+    if len(values) == 1:
+        return 0.0
+    mean = fmean(values)
+    return math.sqrt(sum((value - mean) ** 2 for value in values) / (len(values) - 1))
+
+
+def summary_stats(values: Iterable[float]) -> dict[str, float | int | None]:
+    """Return min/mean/std/percentile/max summary values."""
+
+    materialized = [float(v) for v in values]
+    if not materialized:
+        return {
+            "count": 0,
+            "min": None,
+            "mean": None,
+            "std": None,
+            "p50": None,
+            "p90": None,
+            "p95": None,
+            "p99": None,
+            "max": None,
+        }
+    return {
+        "count": len(materialized),
+        "min": min(materialized),
+        "mean": fmean(materialized),
+        "std": sample_stddev(materialized),
+        "p50": percentile(materialized, 50),
+        "p90": percentile(materialized, 90),
+        "p95": percentile(materialized, 95),
+        "p99": percentile(materialized, 99),
+        "max": max(materialized),
+    }
+
+
+def ns_latency_summary(values_ns: Iterable[int]) -> dict[str, float | int | None]:
+    """Return latency stats in milliseconds for nanosecond samples."""
+
+    return summary_stats(float(value) / NS_PER_MS for value in values_ns)
+
+
+@dataclass(slots=True)
+class SequenceEvent:
+    seq: int
+    duplicate: bool
+    out_of_order: bool
+    lost_gap_detected: bool
+    gap_size: int
+
+
+class SequenceTracker:
+    """Track app-level duplicate, out-of-order, and sequence-gap behavior."""
+
+    def __init__(self, expected_start_seq: int | None = 0) -> None:
+        self.expected_start_seq = expected_start_seq
+        self.seen: set[int] = set()
+        self.max_seq_seen: int | None = None
+        self.min_seq_seen: int | None = None
+        self.duplicate_count = 0
+        self.out_of_order_count = 0
+        self.receiver_gap_events = 0
+        self.gap_count_detected_online = 0
+
+    def observe(self, seq: int) -> SequenceEvent:
+        duplicate = seq in self.seen
+        out_of_order = False
+        lost_gap_detected = False
+        gap_size = 0
+
+        if duplicate:
+            self.duplicate_count += 1
+        else:
+            if self.max_seq_seen is not None:
+                if seq < self.max_seq_seen:
+                    out_of_order = True
+                    self.out_of_order_count += 1
+                elif seq > self.max_seq_seen + 1:
+                    lost_gap_detected = True
+                    gap_size = seq - self.max_seq_seen - 1
+                    self.receiver_gap_events += 1
+                    self.gap_count_detected_online += gap_size
+            self.seen.add(seq)
+            self.min_seq_seen = seq if self.min_seq_seen is None else min(self.min_seq_seen, seq)
+            self.max_seq_seen = seq if self.max_seq_seen is None else max(self.max_seq_seen, seq)
+
+        return SequenceEvent(
+            seq=seq,
+            duplicate=duplicate,
+            out_of_order=out_of_order,
+            lost_gap_detected=lost_gap_detected,
+            gap_size=gap_size,
+        )
+
+    @property
+    def unique_received_count(self) -> int:
+        return len(self.seen)
+
+    def inferred_sent_count(self) -> int:
+        """Return inferred sent count from the expected start to max seq seen."""
+
+        if self.max_seq_seen is None:
+            return 0
+        start = self.expected_start_seq
+        if start is None:
+            start = self.min_seq_seen if self.min_seq_seen is not None else self.max_seq_seen
+        if self.max_seq_seen < start:
+            return 0
+        return self.max_seq_seen - start + 1
+
+    def final_loss_count(self) -> int:
+        """Return missing sequence numbers in the observed measurement range."""
+
+        if self.max_seq_seen is None:
+            return 0
+        start = self.expected_start_seq
+        if start is None:
+            start = self.min_seq_seen if self.min_seq_seen is not None else self.max_seq_seen
+        if self.max_seq_seen < start:
+            return 0
+        expected = set(range(start, self.max_seq_seen + 1))
+        return len(expected - self.seen)
+
+
+def rate(count: int, duration_s: float) -> float:
+    if duration_s <= 0:
+        return 0.0
+    return float(count) / duration_s
+
+
+def safe_ratio(numerator: int | float, denominator: int | float) -> float:
+    if denominator == 0:
+        return 0.0
+    return float(numerator) / float(denominator)
+
+
+def jitter_ms_from_timestamps(monotonic_ns_values: Sequence[int]) -> float | None:
+    """Return sample stddev of inter-arrival periods in milliseconds."""
+
+    if len(monotonic_ns_values) < 3:
+        return 0.0 if len(monotonic_ns_values) >= 2 else None
+    deltas_ms = [
+        (later - earlier) / NS_PER_MS
+        for earlier, later in zip(monotonic_ns_values, monotonic_ns_values[1:])
+    ]
+    return sample_stddev(deltas_ms)
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/__init__.py">
+"""ROS 2 network benchmarking toolkit."""
+
+__version__ = "0.1.0"
+</file>
+
+<file path="ros2_netbench/src/ros2_netbench/run_benchmark.py">
+"""Single CLI entry point for all benchmark roles."""
+
+from __future__ import annotations
+
+import argparse
+
+from ros2_netbench.nodes.common import add_common_arguments, config_from_args
+from ros2_netbench.nodes import (
+    ping_client,
+    ping_server,
+    service_client,
+    service_server,
+    stream_receiver,
+    stream_sender,
+)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run a ROS 2 network benchmark role and write result artifacts."
+    )
+    add_common_arguments(parser)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    config = config_from_args(build_parser().parse_args(argv))
+    if config.mode == "stream" and config.role == "sender":
+        return stream_sender.run(config)
+    if config.mode == "stream" and config.role == "receiver":
+        return stream_receiver.run(config)
+    if config.mode == "ping" and config.role == "client":
+        return ping_client.run(config)
+    if config.mode == "ping" and config.role == "server":
+        return ping_server.run(config)
+    if config.mode == "service" and config.role == "client":
+        return service_client.run(config)
+    if config.mode == "service" and config.role == "server":
+        return service_server.run(config)
+    raise ValueError(f"Unsupported mode/role combination: {config.mode}/{config.role}")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+</file>
+
+<file path="ros2_netbench/package.xml">
+<?xml version="1.0"?>
+<package format="3">
+  <name>ros2_netbench</name>
+  <version>0.1.0</version>
+  <description>Python ROS 2 network benchmarking toolkit for inter-device communication.</description>
+  <maintainer email="maintainer@example.com">ros2_netbench maintainers</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <depend>rclpy</depend>
+  <depend>ros2_netbench_interfaces</depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
+</file>
+
+<file path="ros2_netbench/setup.cfg">
+[develop]
+script_dir=$base/lib/ros2_netbench
+[install]
+install_scripts=$base/lib/ros2_netbench
+</file>
+
+<file path="ros2_netbench/setup.py">
+from glob import glob
+from setuptools import find_packages, setup
+
+
+package_name = "ros2_netbench"
+
+
+setup(
+    name=package_name,
+    version="0.1.0",
+    packages=find_packages(where="src"),
+    package_dir={"": "src"},
+    data_files=[
+        ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
+        (f"share/{package_name}", ["package.xml"]),
+        (f"share/{package_name}/launch", glob("src/ros2_netbench/launch/*.launch.py")),
+        (f"share/{package_name}/config", glob("src/ros2_netbench/config/*.yaml")),
+    ],
+    install_requires=["setuptools"],
+    zip_safe=True,
+    maintainer="ros2_netbench maintainers",
+    maintainer_email="maintainer@example.com",
+    description="Python ROS 2 network benchmarking toolkit.",
+    license="Apache-2.0",
+    tests_require=["pytest"],
+    entry_points={
+        "console_scripts": [
+            "run_benchmark = ros2_netbench.run_benchmark:main",
+            "stream_sender = ros2_netbench.nodes.stream_sender:main",
+            "stream_receiver = ros2_netbench.nodes.stream_receiver:main",
+            "ping_client = ros2_netbench.nodes.ping_client:main",
+            "ping_server = ros2_netbench.nodes.ping_server:main",
+            "service_client = ros2_netbench.nodes.service_client:main",
+            "service_server = ros2_netbench.nodes.service_server:main",
+            "summarize_run = ros2_netbench.analysis.summarize_run:main",
+            "compare_runs = ros2_netbench.analysis.compare_runs:main",
+        ],
+    },
+)
+</file>
+
+<file path="ros2_netbench_interfaces/msg/BenchmarkPacket.msg">
+uint64 seq
+uint64 sender_monotonic_ns
+uint64 sender_wall_ns
+uint64 session_id
+uint32 payload_size
+uint8[] payload
+</file>
+
+<file path="ros2_netbench_interfaces/srv/BenchmarkService.srv">
+BenchmarkPacket packet
+---
+BenchmarkPacket packet
+bool ok
+string error
+</file>
+
+<file path="ros2_netbench_interfaces/CMakeLists.txt">
+cmake_minimum_required(VERSION 3.8)
+project(ros2_netbench_interfaces)
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+find_package(ament_cmake REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/BenchmarkPacket.msg"
+  "srv/BenchmarkService.srv"
+)
+
+ament_export_dependencies(rosidl_default_runtime)
+ament_package()
+</file>
+
+<file path="ros2_netbench_interfaces/package.xml">
+<?xml version="1.0"?>
+<package format="3">
+  <name>ros2_netbench_interfaces</name>
+  <version>0.1.0</version>
+  <description>ROS 2 interfaces for network benchmark packets and services.</description>
+  <maintainer email="maintainer@example.com">ros2_netbench maintainers</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <build_depend>rosidl_default_generators</build_depend>
+
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
+</file>
+
+<file path="scripts/impair_network.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  impair_network.sh show <iface>
+  impair_network.sh clear <iface>
+  impair_network.sh apply <iface> [options]
+
+Options for apply:
+  --latency-ms N       Add fixed latency
+  --jitter-ms N        Add latency jitter
+  --loss-pct N         Drop percentage
+  --duplicate-pct N    Duplicate percentage
+  --reorder-pct N      Reorder percentage
+  --rate M            Rate limit, e.g. 10mbit, 1000kbit
+
+Examples:
+  sudo scripts/impair_network.sh apply eth0 --latency-ms 40 --jitter-ms 5 --loss-pct 1
+  sudo scripts/impair_network.sh apply eth0 --rate 10mbit
+  scripts/impair_network.sh show eth0
+  sudo scripts/impair_network.sh clear eth0
+EOF
+}
+
+if [[ $# -lt 2 ]]; then
+  usage
+  exit 2
+fi
+
+ACTION="$1"
+IFACE="$2"
+shift 2
+
+case "${ACTION}" in
+  show)
+    tc qdisc show dev "${IFACE}"
+    ;;
+  clear)
+    tc qdisc del dev "${IFACE}" root 2>/dev/null || true
+    tc qdisc show dev "${IFACE}"
+    ;;
+  apply)
+    LATENCY_MS=""
+    JITTER_MS=""
+    LOSS_PCT=""
+    DUPLICATE_PCT=""
+    REORDER_PCT=""
+    RATE=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --latency-ms) LATENCY_MS="$2"; shift 2 ;;
+        --jitter-ms) JITTER_MS="$2"; shift 2 ;;
+        --loss-pct) LOSS_PCT="$2"; shift 2 ;;
+        --duplicate-pct) DUPLICATE_PCT="$2"; shift 2 ;;
+        --reorder-pct) REORDER_PCT="$2"; shift 2 ;;
+        --rate) RATE="$2"; shift 2 ;;
+        *) echo "Unknown option: $1" >&2; usage; exit 2 ;;
+      esac
+    done
+
+    NETEM=(netem)
+    if [[ -n "${LATENCY_MS}" ]]; then
+      NETEM+=(delay "${LATENCY_MS}ms")
+      if [[ -n "${JITTER_MS}" ]]; then
+        NETEM+=("${JITTER_MS}ms")
+      fi
+    fi
+    if [[ -n "${LOSS_PCT}" ]]; then
+      NETEM+=(loss "${LOSS_PCT}%")
+    fi
+    if [[ -n "${DUPLICATE_PCT}" ]]; then
+      NETEM+=(duplicate "${DUPLICATE_PCT}%")
+    fi
+    if [[ -n "${REORDER_PCT}" ]]; then
+      NETEM+=(reorder "${REORDER_PCT}%" "50%")
+    fi
+    if [[ -n "${RATE}" ]]; then
+      NETEM+=(rate "${RATE}")
+    fi
+
+    tc qdisc replace dev "${IFACE}" root "${NETEM[@]}"
+    tc qdisc show dev "${IFACE}"
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+</file>
+
+<file path="scripts/run_cross_network.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${MODE:-ping}"
+ROLE="${ROLE:-server}"
+OUTPUT_DIR="${OUTPUT_DIR:-results}"
+DISCOVERY_TIMEOUT="${DISCOVERY_TIMEOUT:-30}"
+
+cat >&2 <<'EOF'
+Cross-network mode expects routed reachability and explicit DDS discovery when
+multicast is unavailable. Configure your RMW before running, for example:
+  export ROS_DISCOVERY_SERVER=<server-ip>:11811
+  export FASTDDS_DEFAULT_PROFILES_FILE=/path/to/fastdds.xml
+  export CYCLONEDDS_URI=file:///path/to/cyclonedds.xml
+VPN/routed addresses are fine; this script does not assume a specific VPN.
+EOF
+
+exec ros2 run ros2_netbench run_benchmark \
+  --mode "${MODE}" \
+  --role "${ROLE}" \
+  --output-dir "${OUTPUT_DIR}" \
+  --discovery-timeout "${DISCOVERY_TIMEOUT}" \
+  "$@"
+</file>
+
+<file path="scripts/run_same_lan.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${MODE:-stream}"
+ROLE="${ROLE:-receiver}"
+OUTPUT_DIR="${OUTPUT_DIR:-results}"
+PAYLOAD_SIZE="${PAYLOAD_SIZE:-1024}"
+RATE_HZ="${RATE_HZ:-10}"
+DURATION="${DURATION:-10}"
+WARMUP="${WARMUP:-2}"
+RELIABILITY="${RELIABILITY:-reliable}"
+DEPTH="${DEPTH:-10}"
+
+exec ros2 run ros2_netbench run_benchmark \
+  --mode "${MODE}" \
+  --role "${ROLE}" \
+  --payload-size "${PAYLOAD_SIZE}" \
+  --rate-hz "${RATE_HZ}" \
+  --duration "${DURATION}" \
+  --warmup "${WARMUP}" \
+  --output-dir "${OUTPUT_DIR}" \
+  --reliability "${RELIABILITY}" \
+  --depth "${DEPTH}" \
+  "$@"
+</file>
+
+<file path="scripts/sync_clock_check.sh">
+#!/usr/bin/env bash
+set -euo pipefail
+
+REMOTE="${1:-}"
+MAX_OFFSET_MS="${MAX_OFFSET_MS:-1.0}"
+
+cat <<EOF
+Local time:
+  date -Ins: $(date -Ins)
+  timedatectl:
+$(timedatectl 2>/dev/null | sed 's/^/    /' || true)
+EOF
+
+if command -v chronyc >/dev/null 2>&1; then
+  echo
+  echo "chronyc tracking:"
+  chronyc tracking || true
+fi
+
+if [[ -n "${REMOTE}" ]]; then
+  echo
+  echo "Remote check via ssh (${REMOTE}):"
+  ssh "${REMOTE}" 'date -Ins; timedatectl 2>/dev/null | sed "s/^/  /" || true'
+  cat <<EOF
+
+Compare chrony/NTP status on both machines. For one-way latency summaries, run
+with --clock-sync ok only when the absolute offset is comfortably below
+${MAX_OFFSET_MS} ms, or run with --clock-sync offset --clock-offset-ms <receiver_minus_sender_ms>.
+EOF
+else
+  cat <<EOF
+
+Pass user@host to also print the remote clock status:
+  scripts/sync_clock_check.sh robot@192.0.2.20
+
+One-way latency is disabled by default. Enable it only after validating clock
+sync:
+  --clock-sync ok
+or provide a measured receiver-minus-sender offset:
+  --clock-sync offset --clock-offset-ms 0.42
+EOF
+fi
+</file>
+
+<file path="tests/integration/test_loopback_stream.py">
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+from pathlib import Path
+import random
+import subprocess
+import sys
+import time
+
+import pytest
+
+
+pytestmark = pytest.mark.integration
+
+
+def _skip_without_ros() -> None:
+    if importlib.util.find_spec("rclpy") is None:
+        pytest.skip("rclpy is not available")
+    if importlib.util.find_spec("ros2_netbench_interfaces") is None:
+        pytest.skip("ros2_netbench_interfaces is not available")
+
+
+def test_loopback_stream_sender_receiver(tmp_path: Path):
+    _skip_without_ros()
+    domain_id = random.randint(100, 200)
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path.cwd() / "ros2_netbench" / "src") + os.pathsep + env.get(
+        "PYTHONPATH",
+        "",
+    )
+
+    receiver = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "ros2_netbench.nodes.stream_receiver",
+            "--domain-id",
+            str(domain_id),
+            "--output-dir",
+            str(tmp_path),
+            "--run-id",
+            "receiver",
+            "--duration",
+            "1.0",
+            "--warmup",
+            "0.2",
+            "--rate-hz",
+            "20",
+            "--payload-size",
+            "128",
+            "--discovery-timeout",
+            "5",
+        ],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    time.sleep(0.5)
+    sender = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "ros2_netbench.nodes.stream_sender",
+            "--domain-id",
+            str(domain_id),
+            "--output-dir",
+            str(tmp_path),
+            "--run-id",
+            "sender",
+            "--duration",
+            "1.0",
+            "--warmup",
+            "0.2",
+            "--rate-hz",
+            "20",
+            "--payload-size",
+            "128",
+            "--discovery-timeout",
+            "5",
+        ],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        sender_out, sender_err = sender.communicate(timeout=15)
+        receiver_out, receiver_err = receiver.communicate(timeout=15)
+    finally:
+        for proc in (sender, receiver):
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait(timeout=5)
+
+    assert sender.returncode == 0, sender_out + sender_err
+    assert receiver.returncode == 0, receiver_out + receiver_err
+    summary = json.loads((tmp_path / "receiver" / "summary.json").read_text(encoding="utf-8"))
+    assert summary["mode"] == "stream"
+    assert summary["role"] == "receiver"
+    assert summary["received_messages"] > 0
+    assert (tmp_path / "receiver" / "raw_samples.csv").exists()
+</file>
+
+<file path="tests/unit/test_stats.py">
+import pytest
+
+from ros2_netbench.utils.stats import (
+    SequenceTracker,
+    jitter_ms_from_timestamps,
+    ns_latency_summary,
+    percentile,
+    safe_ratio,
+    summary_stats,
+)
+
+
+def test_percentile_empty_and_single_sample():
+    assert percentile([], 95) is None
+    assert percentile([10], 95) == 10.0
+
+
+def test_percentile_interpolates():
+    assert percentile([0, 10, 20, 30], 50) == 15.0
+    assert percentile([0, 10, 20, 30], 90) == pytest.approx(27.0)
+
+
+def test_summary_handles_small_counts():
+    empty = summary_stats([])
+    assert empty["count"] == 0
+    assert empty["mean"] is None
+
+    one = summary_stats([5])
+    assert one["count"] == 1
+    assert one["std"] == 0.0
+    assert one["p99"] == 5.0
+
+
+def test_ns_latency_summary_reports_milliseconds():
+    result = ns_latency_summary([1_000_000, 2_000_000, 3_000_000])
+    assert result["min"] == 1.0
+    assert result["mean"] == 2.0
+    assert result["max"] == 3.0
+
+
+def test_sequence_gap_loss_detection():
+    tracker = SequenceTracker(expected_start_seq=0)
+    events = [tracker.observe(seq) for seq in [0, 1, 4]]
+    assert events[-1].lost_gap_detected is True
+    assert events[-1].gap_size == 2
+    assert tracker.receiver_gap_events == 1
+    assert tracker.final_loss_count() == 2
+    assert tracker.inferred_sent_count() == 5
+
+
+def test_duplicate_detection():
+    tracker = SequenceTracker(expected_start_seq=0)
+    tracker.observe(0)
+    event = tracker.observe(0)
+    assert event.duplicate is True
+    assert tracker.duplicate_count == 1
+    assert tracker.unique_received_count == 1
+
+
+def test_reorder_detection_reduces_final_loss_when_late_packet_arrives():
+    tracker = SequenceTracker(expected_start_seq=0)
+    tracker.observe(0)
+    tracker.observe(2)
+    late = tracker.observe(1)
+    assert late.out_of_order is True
+    assert tracker.out_of_order_count == 1
+    assert tracker.final_loss_count() == 0
+
+
+def test_sequence_tracker_unknown_start_uses_first_observed_range():
+    tracker = SequenceTracker(expected_start_seq=None)
+    tracker.observe(10)
+    tracker.observe(12)
+    assert tracker.inferred_sent_count() == 3
+    assert tracker.final_loss_count() == 1
+
+
+def test_jitter_from_timestamps():
+    assert jitter_ms_from_timestamps([]) is None
+    assert jitter_ms_from_timestamps([0, 1_000_000]) == 0.0
+    assert jitter_ms_from_timestamps([0, 1_000_000, 3_000_000]) is not None
+
+
+def test_safe_ratio_zero_denominator():
+    assert safe_ratio(5, 0) == 0.0
+</file>
+
+<file path=".gitignore">
+build/
+install/
+log/
+results/
+*.pyc
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+</file>
+
+<file path="pyproject.toml">
+[tool.pytest.ini_options]
+pythonpath = ["ros2_netbench/src"]
+testpaths = ["tests"]
+markers = [
+  "integration: requires a sourced ROS 2 workspace and generated interfaces",
+]
+</file>
+
+<file path="README.md">
+# ros2_netbench
+
+`ros2_netbench` is a Python ROS 2 benchmarking toolkit for measuring application-level communication quality between two machines. It is Linux-first, uses `rclpy`, targets ROS 2 Jazzy or newer, and writes machine-readable artifacts for repeatable experiments.
+
+The repo contains two ROS 2 packages:
+
+- `ros2_netbench_interfaces`: custom packet message and echo service definitions.
+- `ros2_netbench`: Python benchmark nodes, CLI runner, launch files, analysis helpers, and Linux scripts.
+
+## What It Measures
+
+The toolkit measures ROS 2 application-level behavior:
+
+- Pub/sub stream delivery quality: throughput, loss inferred from sequence gaps, duplicates, out-of-order delivery, inter-arrival jitter, publish-period jitter, and optional one-way latency.
+- Ping/pong RTT: round-trip latency without synchronized clocks.
+- Service latency: request/response latency, timeout rate, achieved request rate.
+- Session timing: discovery time, connection-ready time, experiment start/end timestamps.
+- Optional local process and NIC sampling: CPU percent, RSS memory, NIC TX/RX bps when a Linux interface is provided.
+
+It does not measure raw IP packet loss directly. Application-level message loss is the number of missing ROS benchmark sequence numbers observed by the receiver/client. Raw packet loss can be lower or higher depending on DDS fragmentation, retransmission, QoS reliability, kernel queues, Wi-Fi behavior, and middleware buffering.
+
+## Build
+
+Install ROS 2 Jazzy or newer, source your ROS environment, then build the workspace from the repo root:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+source install/setup.bash
+```
+
+No non-ROS Python runtime dependencies are required for the benchmark logic.
+
+## Benchmark Modes
+
+### 1. Pub/Sub Stream
+
+Machine B, receiver:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode stream --role receiver \
+  --domain-id 42 \
+  --topic /netbench/stream \
+  --rate-hz 100 --payload-size 1024 \
+  --duration 30 --warmup 3 \
+  --output-dir results
+```
+
+Machine A, sender:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode stream --role sender \
+  --domain-id 42 \
+  --topic /netbench/stream \
+  --rate-hz 100 --payload-size 1024 \
+  --duration 30 --warmup 3 \
+  --output-dir results
+```
+
+Start the receiver before the sender. When `--session-id` is not provided, receivers accept the first session they see; senders generate a random session ID. Provide the same `--session-id` on both sides when you want strict filtering.
+
+### 2. Ping/Pong RTT
+
+Machine B, server:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode ping --role server \
+  --domain-id 42 \
+  --topic /netbench/ping \
+  --echo-topic /netbench/pong \
+  --output-dir results
+```
+
+Machine A, client:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode ping --role client \
+  --domain-id 42 \
+  --topic /netbench/ping \
+  --echo-topic /netbench/pong \
+  --rate-hz 50 --payload-size 512 \
+  --duration 30 --warmup 3 \
+  --request-timeout 1.0 \
+  --output-dir results
+```
+
+RTT uses the client's monotonic clock and does not require synchronized wall clocks.
+
+### 3. Service Benchmark
+
+Machine B, service server:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode service --role server \
+  --domain-id 42 \
+  --service /netbench/service \
+  --output-dir results
+```
+
+Machine A, service client:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode service --role client \
+  --domain-id 42 \
+  --service /netbench/service \
+  --rate-hz 20 --payload-size 1024 \
+  --duration 30 --warmup 3 \
+  --request-timeout 1.0 \
+  --output-dir results
+```
+
+## Same-LAN Quick Start
+
+On both machines, use the same ROS domain ID and source the workspace:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=42
+```
+
+Then run the receiver/server first and sender/client second. Same-subnet multicast discovery should work with the default RMW configuration if host firewalls allow DDS traffic.
+
+You can also use launch files:
+
+```bash
+ros2 launch ros2_netbench same_lan_stream.launch.py role:=receiver duration:=30 rate_hz:=100
+ros2 launch ros2_netbench same_lan_stream.launch.py role:=sender duration:=30 rate_hz:=100
+```
+
+## Cross-Network Quick Start
+
+Across routed networks, VPNs, or Tailscale-style overlays, do not assume multicast discovery works. The benchmark code does not hardcode a VPN provider; it only requires IP reachability and a DDS discovery setup that can find peers.
+
+Common options:
+
+- Fast DDS discovery server: set `ROS_DISCOVERY_SERVER=<server-ip>:11811` on both machines, or provide a Fast DDS XML profile through `FASTDDS_DEFAULT_PROFILES_FILE`.
+- Cyclone DDS static peers: set `CYCLONEDDS_URI=file:///path/to/cyclonedds.xml` with peer addresses.
+- Any routed/VPN network is acceptable if DDS discovery and data paths are reachable.
+
+Example RTT over a routed/VPN network:
+
+Machine B:
+
+```bash
+export ROS_DOMAIN_ID=42
+export ROS_DISCOVERY_SERVER=100.64.0.10:11811
+ros2 run ros2_netbench run_benchmark --mode ping --role server --discovery-timeout 30
+```
+
+Machine A:
+
+```bash
+export ROS_DOMAIN_ID=42
+export ROS_DISCOVERY_SERVER=100.64.0.10:11811
+ros2 run ros2_netbench run_benchmark \
+  --mode ping --role client \
+  --rate-hz 20 --payload-size 1024 \
+  --duration 60 --warmup 5 \
+  --discovery-timeout 30
+```
+
+The wrapper script prints the same reminder:
+
+```bash
+MODE=ping ROLE=server scripts/run_cross_network.sh
+MODE=ping ROLE=client scripts/run_cross_network.sh --duration 60
+```
+
+## QoS Examples
+
+Reliable, deeper queue:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode stream --role sender \
+  --reliability reliable --history keep_last --depth 50
+```
+
+Best effort:
+
+```bash
+ros2 run ros2_netbench run_benchmark \
+  --mode stream --role sender \
+  --reliability best_effort --history keep_last --depth 10
+```
+
+Other QoS controls:
+
+```bash
+--durability volatile
+--durability transient_local
+--deadline-ms 100
+--liveliness automatic
+--liveliness manual_by_topic
+```
+
+Use matching QoS on both sides unless you are intentionally testing incompatibility or discovery behavior.
+
+## Payload Size Examples
+
+Small control-style packets:
+
+```bash
+--payload-size 64 --rate-hz 100
+```
+
+Larger payloads:
+
+```bash
+--payload-size 1048576 --rate-hz 5
+```
+
+`--payload-size` controls the allocated `uint8[] payload` length in each benchmark packet. ROS/DDS framing adds additional wire overhead.
+
+## Clock Synchronization
+
+The packet includes both sender monotonic and sender wall-clock timestamps:
+
+- Monotonic timestamps are used for local intervals, publish jitter, receive jitter, RTT, and service latency.
+- Wall-clock timestamps are used only for one-way latency across machines.
+
+One-way latency is disabled by default because unsynchronized clocks produce misleading values:
+
+```json
+"one_way_latency": {
+  "valid": false,
+  "reason": "clock_sync_unknown"
+}
+```
+
+Check clock status:
+
+```bash
+scripts/sync_clock_check.sh user@machine-b
+```
+
+Enable one-way latency only when clocks are synchronized well enough:
+
+```bash
+--clock-sync ok
+```
+
+Or provide a measured receiver-minus-sender offset:
+
+```bash
+--clock-sync offset --clock-offset-ms 0.42 --max-clock-offset-ms 1.0
+```
+
+RTT and service latency remain valid without wall-clock synchronization.
+
+## Network Impairment
+
+The Linux `tc netem` helper supports latency, jitter, loss, duplication, reordering, and rate limiting.
+
+Show current qdisc:
+
+```bash
+scripts/impair_network.sh show eth0
+```
+
+Apply latency, jitter, and packet loss:
+
+```bash
+sudo scripts/impair_network.sh apply eth0 \
+  --latency-ms 40 \
+  --jitter-ms 5 \
+  --loss-pct 1
+```
+
+Apply rate limiting:
+
+```bash
+sudo scripts/impair_network.sh apply eth0 --rate 10mbit
+```
+
+Clear impairment:
+
+```bash
+sudo scripts/impair_network.sh clear eth0
+```
+
+## Output Artifacts
+
+Each role writes a run directory under `--output-dir`:
+
+```text
+results/<run_id>/
+  run_metadata.json
+  summary.json
+  raw_samples.csv
+  system_stats.csv        # only with --sample-system
+  rosbag/                 # only with --bag
+  trace/                  # only with --trace
+```
+
+`raw_samples.csv` contains:
+
+- `timestamp`
+- `seq`
+- `send_time_ns`
+- `receive_time_ns`
+- `local_receive_monotonic_ns`
+- `rtt_ns`
+- `payload_size`
+- `reordered`
+- `duplicate`
+- `lost_gap_detected`
+- `gap_size`
+- `timeout`
+
+`summary.json` includes the aggregate metrics requested for the mode: sent/received counts, loss, duplicates, out-of-order count, throughput, RTT or one-way latency summaries, jitter, timeout count, discovery timing, and optional system metrics.
+
+Post-run helpers:
+
+```bash
+ros2 run ros2_netbench summarize_run results/<run_id>
+ros2 run ros2_netbench compare_runs results/run_a results/run_b --output comparison.md
+```
+
+## System Sampling
+
+Enable local process and NIC sampling:
+
+```bash
+--sample-system --nic eth0
+```
+
+The sampler reads `/proc` directly. It reports current process CPU percent, process RSS memory, and interface TX/RX bps when the interface exists. Each role reports its own local metrics, for example sender-side CPU in the sender result directory and receiver-side CPU in the receiver result directory.
+
+## Optional Bag and Tracing
+
+Record benchmark topics:
+
+```bash
+--bag
+```
+
+Start ROS 2 tracing if installed:
+
+```bash
+--trace
+```
+
+These features shell out to `ros2 bag record` and `ros2 trace`. If the command is not installed, the runner fails with a clear error.
+
+## Metric Interpretation
+
+- `sent_messages`: messages or requests sent during the measurement phase. Stream receiver infers this from observed sequence range; the sender summary has the exact local sent count.
+- `received_messages`: measurement-phase messages/replies/responses observed by the receiving role.
+- `application_level_loss_count`: missing benchmark sequence numbers or missing replies/responses. This is not raw IP loss.
+- `duplicate_count`: repeated sequence numbers received after already seeing the same sequence.
+- `out_of_order_count`: non-duplicate sequence numbers that arrive lower than the highest sequence already observed.
+- `throughput_messages_per_sec`: received or completed messages per measurement duration.
+- `throughput_bytes_per_sec`: payload bytes per second, excluding ROS/DDS overhead.
+- `RTT`: min/mean/std/p50/p90/p95/p99/max in milliseconds for ping and service clients.
+- `one_way_latency`: same latency summary for stream receivers, valid only when clock sync is explicitly accepted.
+- `inter_arrival_jitter_ms`: sample standard deviation of receiver inter-arrival periods.
+- `publish_period_jitter_ms`: sample standard deviation of sender/client send periods.
+- `receiver_gap_events`: number of online sequence jumps observed by a receiver.
+- `timeout_count`: timed-out requests or discovery/first-packet timeout marker depending on role.
+
+Warmup samples are excluded from final stats.
+
+## Troubleshooting Discovery
+
+If nodes do not connect:
+
+1. Confirm both machines source the same built workspace and use the same `ROS_DOMAIN_ID`.
+2. Check `RMW_IMPLEMENTATION` matches your intended middleware.
+3. On same LAN, verify multicast is allowed and host firewalls permit DDS traffic.
+4. Across networks, configure explicit discovery peers or a discovery server; do not rely on multicast.
+5. Increase `--discovery-timeout 30` for routed/VPN links.
+6. Use `ros2 node list`, `ros2 topic list`, and `ros2 service list` in the same environment.
+7. Keep QoS compatible across endpoints.
+8. Verify basic IP reachability with `ping`, `nc`, or your site’s approved network tools.
+
+## Tests
+
+Run pure unit tests:
+
+```bash
+pytest tests/unit
+```
+
+Run the loopback integration test from a sourced ROS 2 workspace:
+
+```bash
+source install/setup.bash
+pytest tests/integration
+```
+
+The integration test skips automatically if `rclpy` or the generated interface package is unavailable.
+</file>
+
+</files>

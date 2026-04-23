@@ -1,0 +1,17 @@
+FROM ros:jazzy-ros-base
+
+SHELL ["/bin/bash", "-lc"]
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    iproute2 \
+    iputils-ping \
+    netcat-openbsd \
+    python3-colcon-common-extensions \
+    python3-pytest \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+CMD ["bash"]

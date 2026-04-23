@@ -1,0 +1,7 @@
+qos:
+  reliability: reliable
+  history: keep_last
+  depth: 50
+  durability: volatile
+  deadline_ms:
+  liveliness: system_default

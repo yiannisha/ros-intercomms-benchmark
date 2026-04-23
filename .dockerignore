@@ -1,0 +1,10 @@
+build/
+install/
+log/
+results/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+repomix-output.xml
