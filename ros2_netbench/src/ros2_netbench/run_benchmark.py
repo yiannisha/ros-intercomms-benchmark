@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import argparse
 
-from ros2_netbench.nodes.common import add_common_arguments, config_from_args
+import sys
+
+from ros2_netbench.nodes.common import add_common_arguments, config_from_args, remove_ros_arguments
 from ros2_netbench.nodes import (
     ping_client,
     ping_server,
@@ -24,7 +26,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    config = config_from_args(build_parser().parse_args(argv))
+    args_list = remove_ros_arguments(list(sys.argv[1:] if argv is None else argv))
+    config = config_from_args(build_parser().parse_args(args_list))
     if config.mode == "stream" and config.role == "sender":
         return stream_sender.run(config)
     if config.mode == "stream" and config.role == "receiver":

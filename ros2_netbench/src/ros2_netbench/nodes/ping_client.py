@@ -21,6 +21,7 @@ from ros2_netbench.nodes.common import (
     config_from_args,
     empty_latency_summary,
     packet_payload,
+    remove_ros_arguments,
     timer_period,
 )
 from ros2_netbench.nodes.sys_monitor import SystemMonitor
@@ -241,7 +242,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args_list = list(sys.argv[1:] if argv is None else argv)
+    args_list = remove_ros_arguments(list(sys.argv[1:] if argv is None else argv))
     if "--mode" not in args_list:
         args_list = ["--mode", "ping", "--role", "client", *args_list]
     config = config_from_args(build_parser().parse_args(args_list))

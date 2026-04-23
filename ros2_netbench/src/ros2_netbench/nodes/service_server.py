@@ -18,6 +18,7 @@ from ros2_netbench.nodes.common import (
     add_common_arguments,
     base_summary,
     config_from_args,
+    remove_ros_arguments,
 )
 from ros2_netbench.nodes.sys_monitor import SystemMonitor
 from ros2_netbench.utils.clocks import NS_PER_MS, iso_utc_from_wall_ns, monotonic_ns, wall_ns
@@ -164,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args_list = list(sys.argv[1:] if argv is None else argv)
+    args_list = remove_ros_arguments(list(sys.argv[1:] if argv is None else argv))
     if "--mode" not in args_list:
         args_list = ["--mode", "service", "--role", "server", *args_list]
     config = config_from_args(build_parser().parse_args(args_list))

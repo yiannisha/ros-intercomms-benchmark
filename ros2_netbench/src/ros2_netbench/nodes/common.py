@@ -219,6 +219,12 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
     add_qos_arguments(parser)
 
 
+def remove_ros_arguments(args: list[str]) -> list[str]:
+    from rclpy.utilities import remove_ros_args
+
+    return remove_ros_args(args=args)
+
+
 def config_from_args(args: argparse.Namespace) -> RunConfig:
     if args.payload_size < 0:
         raise ValueError("--payload-size must be >= 0")
